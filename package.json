@@ -1,0 +1,61 @@
+{
+  "name": "solana-txn-executor",
+  "version": "1.0.1",
+  "description": "A small solution to operate solana transactions: create, sign, send, chunk, support ledger etc.",
+  "main": "dist/cjs/index.js",
+  "module": "dist/mjs/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/mjs/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "scripts": {
+    "publish:beta": "npm version prerelease --preid beta && npm run build && npm publish --tag beta",
+    "publish:patch": "npm version patch && npm run build && npm publish",
+    "publish:minor": "npm version minor && npm run build && npm publish",
+    "publish:major": "npm version major && npm run build && npm publish",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig-cjs.json",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "prepare": "cd .. && husky install fnd-sdk/.husky"
+  },
+  "dependencies": {
+    "@solana/wallet-adapter-react": "^0.15.33",
+    "@solana/web3.js": "^1.68.0",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-json": "^6.0.1",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-typescript": "^11.1.5",
+    "@trivago/prettier-plugin-sort-imports": "^4.2.0",
+    "@types/lodash": "^4.14.196",
+    "@typescript-eslint/eslint-plugin": "^6.2.0",
+    "@typescript-eslint/parser": "^6.2.0",
+    "eslint": "^8.45.0",
+    "eslint-config-prettier": "^8.9.0",
+    "husky": "^8.0.1",
+    "prettier": "^3.0.0",
+    "prettier-eslint": "^15.0.1",
+    "prettier-eslint-cli": "^7.1.0",
+    "rollup": "^4.3.0",
+    "rollup-plugin-dts": "^6.1.0",
+    "typescript": "^4.6.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sablevsky/solana-txn-executor.git"
+  },
+  "keywords": [
+    "solana",
+    "transactions",
+    "web3"
+  ],
+  "author": "Vladislav Sablevsky <sablevsky@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/sablevsky/solana-txn-executor/issues"
+  },
+  "homepage": "https://github.com/sablevsky/solana-txn-executor#readme"
+}
