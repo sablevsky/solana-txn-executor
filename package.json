@@ -8,7 +8,7 @@
     "publish:patch": "npm version patch && yarn build && npm publish",
     "publish:minor": "npm version minor && yarn build && npm publish",
     "publish:major": "npm version major && yarn build && npm publish",
-    "build": "tsc -p tsconfig.json",
+    "build": "rm -fr dist/* && tsc -p tsconfig.json",
     "format": "prettier --write \"src/**/*.ts\"",
     "prepare": "cd .. && husky install fnd-sdk/.husky"
   },
