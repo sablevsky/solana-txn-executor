@@ -1,0 +1,12 @@
+**/*.sh
+coverage/**
+dist/*
+node_modules/*
+node_modules*/*
+docs/*
+**/*.config.js
+**/*.bundle.js
+**/*.spec.js
+deploy.js
+build
+libs

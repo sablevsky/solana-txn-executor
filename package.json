@@ -1,21 +1,14 @@
 {
-  "name": "solana-txn-executor",
-  "version": "1.0.1",
+  "name": "solana-transactions-executor",
+  "version": "1.0.3",
   "description": "A small solution to operate solana transactions: create, sign, send, chunk, support ledger etc.",
-  "main": "dist/cjs/index.js",
-  "module": "dist/mjs/index.js",
-  "exports": {
-    ".": {
-      "import": "./dist/mjs/index.js",
-      "require": "./dist/cjs/index.js"
-    }
-  },
+  "main": "dist/index.js",
   "scripts": {
-    "publish:beta": "npm version prerelease --preid beta && npm run build && npm publish --tag beta",
-    "publish:patch": "npm version patch && npm run build && npm publish",
-    "publish:minor": "npm version minor && npm run build && npm publish",
-    "publish:major": "npm version major && npm run build && npm publish",
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig-cjs.json",
+    "publish:beta": "npm version prerelease --preid beta && yarn build && npm publish --tag beta",
+    "publish:patch": "npm version patch && yarn build && npm publish",
+    "publish:minor": "npm version minor && yarn build && npm publish",
+    "publish:major": "npm version major && yarn build && npm publish",
+    "build": "tsc -p tsconfig.json",
     "format": "prettier --write \"src/**/*.ts\"",
     "prepare": "cd .. && husky install fnd-sdk/.husky"
   },
@@ -25,10 +18,6 @@
     "lodash": "^4.17.21"
   },
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^25.0.7",
-    "@rollup/plugin-json": "^6.0.1",
-    "@rollup/plugin-node-resolve": "^15.2.3",
-    "@rollup/plugin-typescript": "^11.1.5",
     "@trivago/prettier-plugin-sort-imports": "^4.2.0",
     "@types/lodash": "^4.14.196",
     "@typescript-eslint/eslint-plugin": "^6.2.0",
