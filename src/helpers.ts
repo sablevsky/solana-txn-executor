@@ -51,15 +51,27 @@ export const signAndSendTxns = async <TResult>({
 
   const signedTxns = await wallet.signAllTransactions(txns)
 
-  const txnHashes = await Promise.all(
-    signedTxns.map(
-      async (txn) =>
-        await connection.sendRawTransaction(txn.serialize(), {
-          skipPreflight: options.skipPreflight,
-          preflightCommitment: options.preflightCommitment,
-        }),
-    ),
-  )
+  const txnHashes: Array<string> = []
+  if (options.parallelExecutionOfTxnsInChunk) {
+    const hashes = await Promise.all(
+      signedTxns.map(
+        async (txn) =>
+          await connection.sendRawTransaction(txn.serialize(), {
+            skipPreflight: options.skipPreflight,
+            preflightCommitment: options.preflightCommitment,
+          }),
+      ),
+    )
+    txnHashes.push(...hashes)
+  } else {
+    for (let i = 0; i < signedTxns.length; ++i) {
+      const hash = await connection.sendRawTransaction(signedTxns[i].serialize(), {
+        skipPreflight: options.skipPreflight,
+        preflightCommitment: options.preflightCommitment,
+      })
+      txnHashes.push(hash)
+    }
+  }
 
   const results = txnHashes.map((txnHash, idx) => ({
     txnHash,

@@ -16,6 +16,7 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
   preflightCommitment: 'processed',
   rejectQueueOnFirstPfError: false,
   chunkCallOfActionFn: true,
+  parallelExecutionOfTxnsInChunk: true,
 }
 
 export class TxnExecutor<TParams, TResult> {
