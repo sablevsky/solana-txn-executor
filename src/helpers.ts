@@ -15,6 +15,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js'
+import { uniqueId } from 'lodash'
 
 export const signAndSendTxns = async <TResult>({
   txnsData,
@@ -51,29 +52,7 @@ export const signAndSendTxns = async <TResult>({
 
   const signedTxns = await wallet.signAllTransactions(txns)
 
-  const txnHashes: Array<string> = []
-  if (!options.parallelExecutionTimeot) {
-    const hashes = await Promise.all(
-      signedTxns.map(
-        async (txn) =>
-          await connection.sendRawTransaction(txn.serialize(), {
-            skipPreflight: options.skipPreflight,
-            preflightCommitment: options.preflightCommitment,
-          }),
-      ),
-    )
-    txnHashes.push(...hashes)
-  } else {
-    for (let i = 0; i < signedTxns.length; ++i) {
-      const hash = await connection.sendRawTransaction(signedTxns[i].serialize(), {
-        skipPreflight: options.skipPreflight,
-        preflightCommitment: options.preflightCommitment,
-      })
-
-      txnHashes.push(hash)
-      await new Promise((resolve) => setTimeout(resolve, options.parallelExecutionTimeot))
-    }
-  }
+  const txnHashes = await sendTransactions(signedTxns, walletAndConnection, options)
 
   const results = txnHashes.map((txnHash, idx) => ({
     txnHash,
@@ -85,7 +64,46 @@ export const signAndSendTxns = async <TResult>({
   return results
 }
 
-export const createTxn = async <TResult>({
+const sendTransactions = async (
+  txns: VersionedTransaction[],
+  walletAndConnection: WalletAndConnection,
+  options: ExecutorOptions,
+) => {
+  const { connection } = walletAndConnection
+
+  //? Create mock hashes if preventTxnsSending === true
+  if (options.preventTxnsSending) {
+    return txns.map(() => uniqueId('mockTxnHash_'))
+  }
+
+  const txnHashes: Array<string> = []
+  if (!options.parallelExecutionTimeot) {
+    const hashes = await Promise.all(
+      txns.map(
+        async (txn) =>
+          await connection.sendRawTransaction(txn.serialize(), {
+            skipPreflight: options.skipPreflight,
+            preflightCommitment: options.preflightCommitment,
+          }),
+      ),
+    )
+    txnHashes.push(...hashes)
+  } else {
+    for (let i = 0; i < txns.length; ++i) {
+      const hash = await connection.sendRawTransaction(txns[i].serialize(), {
+        skipPreflight: options.skipPreflight,
+        preflightCommitment: options.preflightCommitment,
+      })
+
+      txnHashes.push(hash)
+      await new Promise((resolve) => setTimeout(resolve, options.parallelExecutionTimeot))
+    }
+  }
+
+  return txnHashes
+}
+
+const createTxn = async <TResult>({
   txnData,
   blockhash,
   walletAndConnection,

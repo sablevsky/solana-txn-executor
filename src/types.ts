@@ -30,6 +30,7 @@ export type ExecutorOptions = {
   rejectQueueOnFirstPfError: boolean //? Stop sending other txns after first preflight error. Mostly relevant for the ledger
   chunkCallOfActionFn: boolean //? If true -- call makeActionFn for each chunk (between wallet approve). If false -- call makeActionFn for all txnsParams at once
   parallelExecutionTimeot: number //? If true -- send all transactions via Promise all. If false -- send them sequentially
+  preventTxnsSending: boolean //? Mock transactions result without its sending
   //TODO: Add webscoket result handling in future
 }
 
