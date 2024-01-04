@@ -1,6 +1,6 @@
 {
   "name": "solana-transactions-executor",
-  "version": "1.0.7",
+  "version": "1.0.9",
   "description": "A small solution to operate solana transactions: create, sign, send, chunk, support ledger etc.",
   "main": "dist/index.js",
   "scripts": {

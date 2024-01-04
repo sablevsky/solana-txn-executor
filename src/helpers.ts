@@ -52,7 +52,7 @@ export const signAndSendTxns = async <TResult>({
   const signedTxns = await wallet.signAllTransactions(txns)
 
   const txnHashes: Array<string> = []
-  if (options.parallelExecutionOfTxnsInChunk) {
+  if (!options.parallelExecutionTimeot) {
     const hashes = await Promise.all(
       signedTxns.map(
         async (txn) =>
@@ -69,7 +69,9 @@ export const signAndSendTxns = async <TResult>({
         skipPreflight: options.skipPreflight,
         preflightCommitment: options.preflightCommitment,
       })
+
       txnHashes.push(hash)
+      await new Promise((resolve) => setTimeout(resolve, options.parallelExecutionTimeot))
     }
   }
 

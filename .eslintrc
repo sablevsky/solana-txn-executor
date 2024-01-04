@@ -23,6 +23,9 @@
     "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/no-empty-function": "warn"
   },
+  "globals": {
+    "setTimeout": false
+  },
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
     "ecmaFeatures": {
