@@ -13,7 +13,6 @@
     "prepare": "cd .. && husky install fnd-sdk/.husky"
   },
   "dependencies": {
-    "@solana/wallet-adapter-react": "^0.15.33",
     "@solana/web3.js": "^1.68.0",
     "lodash": "^4.17.21"
   },

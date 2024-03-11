@@ -1,49 +1,164 @@
-import { WalletContextState } from '@solana/wallet-adapter-react'
-import { Commitment, Connection, PublicKey, Signer, TransactionInstruction } from '@solana/web3.js'
+import {
+  ConfirmOptions,
+  Connection,
+  PublicKey,
+  Signer,
+  TransactionInstruction,
+  VersionedTransaction,
+} from '@solana/web3.js'
 
-export interface WalletAndConnection {
-  wallet: WalletContextState
+/**
+ * The wallet must contain a publicKey and support at least signTransaction method
+ */
+export type Wallet = {
+  publicKey: PublicKey
+  signTransaction: (transaction: VersionedTransaction) => Promise<VersionedTransaction>
+  signAllTransactions:
+    | ((transactions: VersionedTransaction[]) => Promise<VersionedTransaction[]>)
+    | undefined
+}
+
+export type WalletAndConnection = {
+  wallet: Wallet
   connection: Connection
 }
 
-export interface TxnError extends Error {
-  logs?: Array<string>
-}
+export type TxnError = {
+  logs: Array<string> | undefined
+} & Error
 
-export type TxnData<TResult> = {
+/**
+ * Data needed to create a transaction
+ * Consists of instructions, signers (optional),
+ * lookup tables (optional)
+ * and additional result (additional data to be returned with the
+ * transaction result. F.e. for an optimistic response) (optional)
+ */
+export type TxnData<TxnAdditionalResult> = {
   instructions: TransactionInstruction[]
-  signers?: Signer[]
-  additionalResult?: TResult
-  lookupTables: PublicKey[]
+  signers: Signer[] | undefined
+  additionalResult: TxnAdditionalResult | undefined
+  lookupTables: PublicKey[] | undefined
 }
 
-export type MakeActionFn<TParams, TResult> = (
-  params: TParams,
+/**
+ * Function that creates TxnData. Acc
+ * Accepts the parameters required to create a TxnData.
+ * Wallet and Connection are always passed
+ */
+export type CreateTxnDataFn<CreateTxnFnParams, TxnAdditionalResult> = (
+  params: CreateTxnFnParams,
   walletAndConnection: WalletAndConnection,
-) => Promise<TxnData<TResult>>
+) => Promise<TxnData<TxnAdditionalResult>>
 
 export type ExecutorOptions = {
-  commitment: Commitment
-  signAllChunks: number
-  skipPreflight: boolean
-  preflightCommitment: Commitment
-  rejectQueueOnFirstPfError: boolean //? Stop sending other txns after first preflight error. Mostly relevant for the ledger
-  chunkCallOfActionFn: boolean //? If true -- call makeActionFn for each chunk (between wallet approve). If false -- call makeActionFn for all txnsParams at once
-  parallelExecutionTimeot: number //? If true -- send all transactions via Promise all. If false -- send them sequentially
-  preventTxnsSending: boolean //? Mock transactions result without its sending
-  //TODO: Add webscoket result handling in future
+  /**
+   * Options for sending transactions
+   * Default value: { skipPreflight: false, commitment: 'confirmed', preflightCommitment: 'processed', maxRetries: undefined, minContextSlot: undefined }
+   */
+  confirmOptions: ConfirmOptions
+  /**
+   * Amount of transactions passed to the signAllTransactions function
+   * Default value: 40
+   * Works only if signAllTransactions is supported!
+   * Max amount of transactions processed in signAllTransactions is limited by wallet provider implementation
+   * Use 1 for ledger of SquadsX
+   */
+  signAllChunkSize: number
+  /**
+   * Stop sending other txns(chunks) after first preflight error. Mostly relevant for small values of signAllChunkSize (E.g. ledger cases)
+   * Default value: false
+   */
+  abortOnFirstPfError: boolean
+  /**
+   *
+   * Useful in cases where there are a lot of chunks. Prevents the errors related to
+   * loss of relevance of data. F.e. If asynchronous requests are used in createTxnDataFn.
+   * However, it can create a delay between signTransaction/signAllTransaction calls
+   * Default value: true
+   */
+  createTxnDataBeforeEachChunkSign: boolean
+  /**
+   * If the value exists, the transactions in chunk will be sent sequentially with the specified delay
+   * If no value is passed, the transactions in chunk will be sent via Promise.all
+   * Allowed values: [0, +Infinity)
+   * Default value: undefined
+   */
+  sequentialSendingDelay: number | undefined
+  /**
+   * Parameters for debug
+   */
+  debug: {
+    /**
+     * Prevent sending transactions via RPC
+     * F.e. Can be used to test optimistics responses without sending transactions into blockchain
+     * Default value: undefined
+     */
+    preventSending: boolean | undefined
+    /**
+     * Set the chance of unsuccessful transaction confirmation
+     * F.e. To mock an unstable network condition
+     * Works only if preventSending: true!
+     * Allowed values: [0, 1)
+     * Default value: undefined
+     */
+    confirmationFailChance: number | undefined
+  }
 }
 
+/**
+ * Supported event handlers
+ */
 export type EventHanlders<TResult> = Partial<{
-  beforeFirstApprove: () => void //? Triggers before first chunk approve
-  beforeApproveEveryChunk: () => void //? Triggers after beforeFirstApprove and before each chunk approve
-  pfSuccessAll: (result: SendTxnsResult<TResult>) => void //? Triggers if all chunks were successfully sent
-  pfSuccessSome: (result: SendTxnsResult<TResult>) => void //? Triggers if at least one chunk was successfully sended
-  pfSuccessEach: (result: SendTxnsResult<TResult>) => void //? Triggers after successfull send of each chunk
-  pfError: (error: TxnError) => void //? Triggers on any error
+  /**
+   * Triggers only once before first chunk approve but after the first call of CreateTxnDataFn
+   */
+  beforeFirstApprove: () => void
+  /**
+   * Triggers before every chunk approve
+   * The first call is triggered after beforeFirstApprove
+   */
+  beforeApproveEveryChunk: () => void
+  /**
+   * Triggers if all chunks were successfully sent (no errors on preflight)
+   */
+  pfSuccessAll: (result: SentTransactionsResult<TResult>) => void
+  /**
+   * Triggers if at least one chunk was successfully sent (no errors on preflight)
+   */
+  pfSuccessSome: (result: SentTransactionsResult<TResult>) => void
+  /**
+   * Triggers every time after each chunk is successfully sent (no errors on preflight)
+   */
+  pfSuccessEach: (result: SentTransactionsResult<TResult>) => void
+  /**
+   * Triggers on every preflight error
+   */
+  pfError: (error: TxnError) => void
+  /**
+   * Triggers if all chunks have been successfully confirmed
+   */
+  confirmedAll: (result: SentTransactionsResult<TResult>) => void
+  /**
+   * Triggers if at least one chunk has been successfully confirmed
+   */
+  confirmedSome: (result: SentTransactionsResult<TResult>) => void
+  /**
+   * Triggers every time after each chunk is successfully confirmed
+   */
+  confirmedEach: (result: SentTransactionsResult<TResult>) => void
+  /**
+   * Triggers on every unsuccessfully confirmed transaction
+   * Transaction! Not chunk
+   */
+  confirmationError: (error: TxnError) => void
 }>
 
-export type SendTxnsResult<TResult> = Array<{
+export type SentTransactionResult<TxnAdditionalResult> = {
   txnHash: string
-  result: TResult | undefined
-}>
+  result: TxnAdditionalResult | undefined
+}
+
+export type SentTransactionsResult<TxnAdditionalResult> = Array<
+  SentTransactionResult<TxnAdditionalResult>
+>

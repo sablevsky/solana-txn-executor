@@ -1,55 +1,62 @@
-import { hasUserRejectedTxnApprove, signAndSendTxns } from './helpers'
+import { didUserRejectTxnSigning, signAndSendTxns } from './helpers'
 import {
+  CreateTxnDataFn,
   EventHanlders,
   ExecutorOptions,
-  MakeActionFn,
-  SendTxnsResult,
+  SentTransactionsResult,
   TxnError,
   WalletAndConnection,
 } from './types'
-import { chunk } from 'lodash'
+import { chunk, merge } from 'lodash'
 
 export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
-  commitment: 'confirmed',
-  signAllChunks: 40, //? Set different for ledger
-  skipPreflight: false,
-  preflightCommitment: 'processed',
-  rejectQueueOnFirstPfError: false,
-  chunkCallOfActionFn: true,
-  parallelExecutionTimeot: 0,
-  preventTxnsSending: false,
+  confirmOptions: {
+    skipPreflight: false,
+    commitment: 'confirmed',
+    preflightCommitment: 'processed',
+    maxRetries: undefined,
+    minContextSlot: undefined,
+  },
+  signAllChunkSize: 40,
+  abortOnFirstPfError: false,
+  createTxnDataBeforeEachChunkSign: true,
+  sequentialSendingDelay: undefined,
+  debug: {
+    preventSending: undefined,
+    confirmationFailChance: undefined,
+  },
 }
 
-export class TxnExecutor<TParams, TResult> {
-  private makeActionFn: MakeActionFn<TParams, TResult>
-  private txnsParams: TParams[] = []
+export class TxnExecutor<CreateTxnFnParams, TxnAdditionalResult> {
+  private createTxnDataFn: CreateTxnDataFn<CreateTxnFnParams, TxnAdditionalResult>
+  private txnsParams: ReadonlyArray<CreateTxnFnParams> = []
   private options: ExecutorOptions = DEFAULT_EXECUTOR_OPTIONS
   private walletAndConnection: WalletAndConnection
-  private eventHandlers: EventHanlders<TResult> = {}
+  private eventHandlers: EventHanlders<TxnAdditionalResult> = {}
   constructor(
-    makeActionFn: MakeActionFn<TParams, TResult>,
+    createTxnDataFn: CreateTxnDataFn<CreateTxnFnParams, TxnAdditionalResult>,
     walletAndConnection: WalletAndConnection,
     options?: Partial<ExecutorOptions>,
   ) {
-    this.makeActionFn = makeActionFn
+    this.createTxnDataFn = createTxnDataFn
     this.walletAndConnection = walletAndConnection
-    this.options = {
-      ...this.options,
-      ...options,
-    }
+    this.options = merge(this.options, options)
   }
 
-  public addTxnParam(param: TParams) {
+  public addTxnParam(param: CreateTxnFnParams) {
     this.txnsParams = [...this.txnsParams, param]
     return this
   }
 
-  public addTxnParams(params: TParams[]) {
+  public addTxnParams(params: CreateTxnFnParams[]) {
     this.txnsParams = [...this.txnsParams, ...params]
     return this
   }
 
-  public on<K extends keyof EventHanlders<TResult>>(type: K, handler: EventHanlders<TResult>[K]) {
+  public on<K extends keyof EventHanlders<CreateTxnFnParams>>(
+    type: K,
+    handler: EventHanlders<CreateTxnFnParams>[K],
+  ) {
     this.eventHandlers = {
       ...this.eventHandlers,
       [type]: handler,
@@ -58,7 +65,7 @@ export class TxnExecutor<TParams, TResult> {
   }
 
   public async execute() {
-    if (this.options.chunkCallOfActionFn) {
+    if (this.options.createTxnDataBeforeEachChunkSign) {
       return await this.executeChunked()
     }
     return await this.executeDefault()
@@ -66,17 +73,17 @@ export class TxnExecutor<TParams, TResult> {
 
   private async executeDefault() {
     try {
-      const { txnsParams, makeActionFn, walletAndConnection, options, eventHandlers } = this
+      const { txnsParams, createTxnDataFn, walletAndConnection, options, eventHandlers } = this
 
       const txnsData = await Promise.all(
-        txnsParams.map((params) => makeActionFn(params, { ...walletAndConnection })),
+        txnsParams.map((params) => createTxnDataFn(params, { ...walletAndConnection })),
       )
 
       eventHandlers?.beforeFirstApprove?.()
 
-      const txnChunks = chunk(txnsData, options.signAllChunks)
+      const txnChunks = chunk(txnsData, options.signAllChunkSize)
 
-      const signAndSendTxnsResults: SendTxnsResult<TResult> = []
+      const signAndSendTxnsResults: SentTransactionsResult<TxnAdditionalResult> = []
       for (const chunk of txnChunks) {
         try {
           const result = await signAndSendTxns({
@@ -88,15 +95,16 @@ export class TxnExecutor<TParams, TResult> {
           signAndSendTxnsResults.push(...result)
         } catch (error) {
           eventHandlers?.pfError?.(error as TxnError)
-          const userRejectedTxn = hasUserRejectedTxnApprove(error as TxnError)
-          if (userRejectedTxn) return
-          if (!userRejectedTxn && options.rejectQueueOnFirstPfError) return
+          const userRejectedTxn = didUserRejectTxnSigning(error as TxnError)
+          if (userRejectedTxn) break
+          if (!userRejectedTxn && options.abortOnFirstPfError) break
         }
       }
 
       if (signAndSendTxnsResults.length === txnChunks.flat().length) {
         eventHandlers?.pfSuccessAll?.(signAndSendTxnsResults)
-      } else if (signAndSendTxnsResults.length) {
+      }
+      if (signAndSendTxnsResults.length) {
         eventHandlers?.pfSuccessSome?.(signAndSendTxnsResults)
       }
 
@@ -108,17 +116,17 @@ export class TxnExecutor<TParams, TResult> {
 
   private async executeChunked() {
     try {
-      const { txnsParams, makeActionFn, walletAndConnection, options, eventHandlers } = this
+      const { txnsParams, createTxnDataFn, walletAndConnection, options, eventHandlers } = this
 
-      const txnsDataChunks = chunk(txnsParams, options.signAllChunks)
+      const txnsDataChunks = chunk(txnsParams, options.signAllChunkSize)
 
       eventHandlers?.beforeFirstApprove?.()
 
-      const signAndSendTxnsResults: SendTxnsResult<TResult> = []
+      const signAndSendTxnsResults: SentTransactionsResult<TxnAdditionalResult> = []
       for (const chunk of txnsDataChunks) {
         try {
           const txnsData = await Promise.all(
-            chunk.map((params) => makeActionFn(params, { ...walletAndConnection })),
+            chunk.map((params) => createTxnDataFn(params, { ...walletAndConnection })),
           )
 
           const result = await signAndSendTxns({
@@ -131,9 +139,9 @@ export class TxnExecutor<TParams, TResult> {
           signAndSendTxnsResults.push(...result)
         } catch (error) {
           eventHandlers?.pfError?.(error as TxnError)
-          const userRejectedTxn = hasUserRejectedTxnApprove(error as TxnError)
-          if (userRejectedTxn) return
-          if (!userRejectedTxn && options.rejectQueueOnFirstPfError) return
+          const userRejectedTxn = didUserRejectTxnSigning(error as TxnError)
+          if (userRejectedTxn) break
+          if (!userRejectedTxn && options.abortOnFirstPfError) break
         }
       }
 

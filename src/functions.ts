@@ -1,4 +1,5 @@
 import { USER_REJECTED_TXN_ERR_MESSAGES } from './constants'
+import { createTxn } from './helpers'
 import {
   EventHanlders,
   ExecutorOptions,
@@ -9,13 +10,16 @@ import {
 } from './types'
 import {
   AddressLookupTableAccount,
+  Commitment,
+  ConfirmOptions,
   Connection,
   PublicKey,
   RpcResponseAndContext,
   TransactionMessage,
   VersionedTransaction,
+  sendAndConfirmRawTransaction
 } from '@solana/web3.js'
-import { uniqueId } from 'lodash'
+import { has, uniqueId } from 'lodash'
 
 export const signAndSendTxns = async <TxnAdditionalResult>({
   txnsData,
@@ -100,73 +104,84 @@ const sendTransactions = async (
     }
   }
 
-  const controller = new AbortController()
-  const signal = controller.signal
-
-  const x = connection.confirmTransaction(
-    {
-      signature: 'signature',
-      lastValidBlockHeight: 12245,
-      blockhash: '12345',
-      abortSignal: signal,
-    },
-    'confirmed',
-  )
-
   return txnHashes
 }
 
-export const createTxn = async <TxnAdditionalResult>({
-  txnData,
-  blockhash,
-  walletAndConnection,
-}: {
-  txnData: TxnData<TxnAdditionalResult>
-  blockhash: string
-  walletAndConnection: WalletAndConnection
-}) => {
-  const { connection, wallet } = walletAndConnection
+const sendTransactionsParallel = async (
+  txns: VersionedTransaction[],
+  walletAndConnection: WalletAndConnection,
+  options: ExecutorOptions,
+) => {
+  const { connection } = walletAndConnection
 
-  const { lookupTables } = txnData
+  //? Create mock hashes if preventTxnsSending === true
+  if (options.debug.preventSending) {
+    return txns.map(() => uniqueId('mockTxnHash_'))
+  }
 
-  const lookupTableAccounts = await Promise.all(
-    (lookupTables ?? []).map((lt) => fetchLookupTableAccount(lt, connection)),
-  )
-
-  const transaction = new VersionedTransaction(
-    new TransactionMessage({
-      payerKey: wallet.publicKey as PublicKey,
-      recentBlockhash: blockhash,
-      instructions: txnData.instructions,
-    }).compileToV0Message(
-      lookupTableAccounts.map(({ value }) => value as AddressLookupTableAccount),
+  const hashes = await Promise.all(
+    txns.map(
+      async (txn) =>
+        await sendTransaction({
+          txn,
+          connection,
+          confirmOptions: {
+            skipPreflight: options.confirmOptions.skipPreflight,
+            preflightCommitment: options.confirmOptions.preflightCommitment,
+          },
+        }),
     ),
   )
 
-  if (txnData.signers) {
-    transaction.sign(txnData.signers)
-  }
+  Promise.allSettled(
+    hashes.map(async (hash) => {
+      await confirmTransaction({
+        signature: hash,
+        connection,
+        options: {
+          commitment: options.confirmOptions.commitment,
+          blockhash: '12345',
+          lastValidBlockHeight: 12345,
+        },
+      })
+    }),
+  )
 
-  return transaction
+  return hashes
 }
 
-const lookupTablesCache = new Map<
-  string,
-  Promise<RpcResponseAndContext<AddressLookupTableAccount | null>>
->()
-const fetchLookupTableAccount = (lookupTable: PublicKey, connection: Connection) => {
-  const lookupTableAddressStr = lookupTable.toBase58()
+const sendTransaction = async (params: {
+  txn: VersionedTransaction
+  connection: Connection
+  confirmOptions: ConfirmOptions
+}) => {
+  const { txn, connection, confirmOptions } = params
 
-  if (!lookupTablesCache.has(lookupTableAddressStr)) {
-    const lookupTableAccountPromise = connection.getAddressLookupTable(lookupTable)
+  const signature = await connection.sendRawTransaction(txn.serialize(), {
+    skipPreflight: confirmOptions.skipPreflight,
+    preflightCommitment: confirmOptions.preflightCommitment,
+  })
 
-    lookupTablesCache.set(lookupTableAddressStr, lookupTableAccountPromise)
-  }
-
-  return lookupTablesCache.get(lookupTableAddressStr)!
+  return signature
 }
 
-export const didUserRejectTxnSigning = (error: TxnError) => {
-  const { message } = error
-  return USER_REJECTED_TXN_ERR_MESSAGES.includes(message)
+const confirmTransaction = async (params: {
+  signature: string
+  connection: Connection
+  options: {
+    commitment: Commitment | undefined
+    blockhash: string
+    lastValidBlockHeight: number
+  }
+}) => {
+  const { signature, connection, options } = params
+
+  return await connection.confirmTransaction(
+    {
+      signature,
+      lastValidBlockHeight: options.lastValidBlockHeight,
+      blockhash: options.blockhash,
+    },
+    options.commitment,
+  )
 }
