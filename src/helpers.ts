@@ -30,7 +30,7 @@ export const signAndSendTxns = async <TResult>({
 }): Promise<SendTxnsResult<TResult>> => {
   const { connection, wallet } = walletAndConnection
 
-  const { blockhash } = await connection.getLatestBlockhash()
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash()
 
   const txns = (
     await Promise.all(
@@ -59,9 +59,25 @@ export const signAndSendTxns = async <TResult>({
     result: txnsData?.[idx]?.additionalResult,
   }))
 
-  eventHandlers?.pfSuccessEach?.(results)
+  const confirmedResults = []
 
-  return results
+  for (const result of results) {
+    const confirmation = await connection.confirmTransaction({
+      signature: result.txnHash,
+      blockhash: blockhash,
+      lastValidBlockHeight: lastValidBlockHeight,
+    })
+
+    if (!confirmation.value.err) {
+      confirmedResults.push(result)
+    } else {
+      throw new Error('Transaction not confirmed')
+    }
+  }
+
+  eventHandlers?.pfSuccessEach?.(confirmedResults)
+
+  return confirmedResults
 }
 
 const sendTransactions = async (
