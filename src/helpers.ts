@@ -30,7 +30,7 @@ export const signAndSendTxns = async <TResult>({
 }): Promise<SendTxnsResult<TResult>> => {
   const { connection, wallet } = walletAndConnection
 
-  const { blockhash } = await connection.getLatestBlockhash()
+  const { blockhash } = await connection.getLatestBlockhash({ commitment: options.commitment })
 
   const txns = (
     await Promise.all(
