@@ -1,8 +1,10 @@
-import { didUserRejectTxnSigning, signAndSendTxns } from './helpers'
+import { confirmTransactions, createTransaction, signAndSendTransactions } from './functions'
+import { didUserRejectTxnSigning } from './helpers'
 import {
-  CreateTxnDataFn,
+  CreateTransactionDataFn,
   EventHanlders,
   ExecutorOptions,
+  SentTransactionResult,
   SentTransactionsResult,
   TxnError,
   WalletAndConnection,
@@ -19,7 +21,6 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
   },
   signAllChunkSize: 40,
   abortOnFirstPfError: false,
-  createTxnDataBeforeEachChunkSign: true,
   sequentialSendingDelay: undefined,
   debug: {
     preventSending: undefined,
@@ -27,35 +28,38 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
   },
 }
 
-export class TxnExecutor<CreateTxnFnParams, TxnAdditionalResult> {
-  private createTxnDataFn: CreateTxnDataFn<CreateTxnFnParams, TxnAdditionalResult>
-  private txnsParams: ReadonlyArray<CreateTxnFnParams> = []
+export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
+  private createTransactionDataFn: CreateTransactionDataFn<
+    CreateTransactionFnParams,
+    TransactionResult
+  >
+  private txnsParams: ReadonlyArray<CreateTransactionFnParams> = []
   private options: ExecutorOptions = DEFAULT_EXECUTOR_OPTIONS
   private walletAndConnection: WalletAndConnection
-  private eventHandlers: EventHanlders<TxnAdditionalResult> = {}
+  private eventHandlers: EventHanlders<TransactionResult> = {}
   constructor(
-    createTxnDataFn: CreateTxnDataFn<CreateTxnFnParams, TxnAdditionalResult>,
+    createTransactionDataFn: CreateTransactionDataFn<CreateTransactionFnParams, TransactionResult>,
     walletAndConnection: WalletAndConnection,
     options?: Partial<ExecutorOptions>,
   ) {
-    this.createTxnDataFn = createTxnDataFn
+    this.createTransactionDataFn = createTransactionDataFn
     this.walletAndConnection = walletAndConnection
     this.options = merge(this.options, options)
   }
 
-  public addTxnParam(param: CreateTxnFnParams) {
+  public addTxnParam(param: CreateTransactionFnParams) {
     this.txnsParams = [...this.txnsParams, param]
     return this
   }
 
-  public addTxnParams(params: CreateTxnFnParams[]) {
+  public addTxnParams(params: CreateTransactionFnParams[]) {
     this.txnsParams = [...this.txnsParams, ...params]
     return this
   }
 
-  public on<K extends keyof EventHanlders<CreateTxnFnParams>>(
+  public on<K extends keyof EventHanlders<CreateTransactionFnParams>>(
     type: K,
-    handler: EventHanlders<CreateTxnFnParams>[K],
+    handler: EventHanlders<CreateTransactionFnParams>[K],
   ) {
     this.eventHandlers = {
       ...this.eventHandlers,
@@ -65,78 +69,71 @@ export class TxnExecutor<CreateTxnFnParams, TxnAdditionalResult> {
   }
 
   public async execute() {
-    if (this.options.createTxnDataBeforeEachChunkSign) {
-      return await this.executeChunked()
-    }
-    return await this.executeDefault()
-  }
-
-  private async executeDefault() {
     try {
-      const { txnsParams, createTxnDataFn, walletAndConnection, options, eventHandlers } = this
-
-      const txnsData = await Promise.all(
-        txnsParams.map((params) => createTxnDataFn(params, { ...walletAndConnection })),
-      )
-
-      eventHandlers?.beforeFirstApprove?.()
-
-      const txnChunks = chunk(txnsData, options.signAllChunkSize)
-
-      const signAndSendTxnsResults: SentTransactionsResult<TxnAdditionalResult> = []
-      for (const chunk of txnChunks) {
-        try {
-          const result = await signAndSendTxns({
-            txnsData: chunk,
-            walletAndConnection,
-            eventHandlers,
-            options,
-          })
-          signAndSendTxnsResults.push(...result)
-        } catch (error) {
-          eventHandlers?.pfError?.(error as TxnError)
-          const userRejectedTxn = didUserRejectTxnSigning(error as TxnError)
-          if (userRejectedTxn) break
-          if (!userRejectedTxn && options.abortOnFirstPfError) break
-        }
-      }
-
-      if (signAndSendTxnsResults.length === txnChunks.flat().length) {
-        eventHandlers?.pfSuccessAll?.(signAndSendTxnsResults)
-      }
-      if (signAndSendTxnsResults.length) {
-        eventHandlers?.pfSuccessSome?.(signAndSendTxnsResults)
-      }
-
-      return signAndSendTxnsResults
-    } catch (error) {
-      this.eventHandlers?.pfError?.(error as TxnError)
-    }
-  }
-
-  private async executeChunked() {
-    try {
-      const { txnsParams, createTxnDataFn, walletAndConnection, options, eventHandlers } = this
+      const { txnsParams, createTransactionDataFn, walletAndConnection, options, eventHandlers } =
+        this
 
       const txnsDataChunks = chunk(txnsParams, options.signAllChunkSize)
 
       eventHandlers?.beforeFirstApprove?.()
 
-      const signAndSendTxnsResults: SentTransactionsResult<TxnAdditionalResult> = []
+      const signAndSendTxnsResults: SentTransactionsResult<TransactionResult> = []
+      const confirmedOrFailedSignatures: string[] = []
       for (const chunk of txnsDataChunks) {
         try {
-          const txnsData = await Promise.all(
-            chunk.map((params) => createTxnDataFn(params, { ...walletAndConnection })),
+          const transactionCreationData = await Promise.all(
+            chunk.map((params) => createTransactionDataFn(params, { ...walletAndConnection })),
           )
 
-          const result = await signAndSendTxns({
-            txnsData,
+          const { blockhash, lastValidBlockHeight } =
+            await walletAndConnection.connection.getLatestBlockhash()
+
+          const transactions = await Promise.all(
+            transactionCreationData.map((txnData) =>
+              createTransaction({
+                transactionCreationData: txnData,
+                blockhash,
+                connection: walletAndConnection.connection,
+                payerKey: walletAndConnection.wallet.publicKey,
+              }),
+            ),
+          )
+
+          eventHandlers?.beforeApproveEveryChunk?.()
+
+          const signatures = await signAndSendTransactions({
+            transactions,
             walletAndConnection,
-            eventHandlers,
             options,
           })
 
-          signAndSendTxnsResults.push(...result)
+          const results: SentTransactionResult<TransactionResult>[] = signatures.map(
+            (signature, idx) => ({
+              signature,
+              transactionResult: transactionCreationData?.[idx]?.result,
+            }),
+          )
+
+          eventHandlers?.pfSuccessEach?.(results)
+
+          confirmTransactions({
+            signatures,
+            blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
+            connection: walletAndConnection.connection,
+            options,
+          }).then(({ confirmed, failed }) => {
+            confirmedOrFailedSignatures.push(...confirmed, ...failed)
+
+            //TODO:
+            if (confirmedOrFailedSignatures.length === txnsParams.length) {
+              // eventHandlers?.confirmedSome()
+              // eventHandlers?.confirmedAll()
+            }
+            // eventHandlers?.confirmedEach()
+            // eventHandlers?.confirmationError()
+          })
+
+          signAndSendTxnsResults.push(...results)
         } catch (error) {
           eventHandlers?.pfError?.(error as TxnError)
           const userRejectedTxn = didUserRejectTxnSigning(error as TxnError)

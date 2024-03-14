@@ -1,9 +1,9 @@
+import { TransactionCreationData } from './functions/createTransaction'
 import {
+  Blockhash,
   ConfirmOptions,
   Connection,
   PublicKey,
-  Signer,
-  TransactionInstruction,
   VersionedTransaction,
 } from '@solana/web3.js'
 
@@ -34,22 +34,22 @@ export type TxnError = {
  * and additional result (additional data to be returned with the
  * transaction result. F.e. for an optimistic response) (optional)
  */
-export type TxnData<TxnAdditionalResult> = {
-  instructions: TransactionInstruction[]
-  signers: Signer[] | undefined
-  additionalResult: TxnAdditionalResult | undefined
-  lookupTables: PublicKey[] | undefined
-}
+// export type TxnData<TransactionResult> = {
+//   instructions: TransactionInstruction[]
+//   signers: Signer[] | undefined
+//   additionalResult: TransactionResult | undefined
+//   lookupTables: PublicKey[] | undefined
+// }
 
 /**
  * Function that creates TxnData. Acc
  * Accepts the parameters required to create a TxnData.
  * Wallet and Connection are always passed
  */
-export type CreateTxnDataFn<CreateTxnFnParams, TxnAdditionalResult> = (
-  params: CreateTxnFnParams,
+export type CreateTransactionDataFn<CreateTransactionFnParams, TransactionResult> = (
+  params: CreateTransactionFnParams,
   walletAndConnection: WalletAndConnection,
-) => Promise<TxnData<TxnAdditionalResult>>
+) => Promise<TransactionCreationData<TransactionResult>>
 
 export type ExecutorOptions = {
   /**
@@ -70,14 +70,7 @@ export type ExecutorOptions = {
    * Default value: false
    */
   abortOnFirstPfError: boolean
-  /**
-   *
-   * Useful in cases where there are a lot of chunks. Prevents the errors related to
-   * loss of relevance of data. F.e. If asynchronous requests are used in createTxnDataFn.
-   * However, it can create a delay between signTransaction/signAllTransaction calls
-   * Default value: true
-   */
-  createTxnDataBeforeEachChunkSign: boolean
+
   /**
    * If the value exists, the transactions in chunk will be sent sequentially with the specified delay
    * If no value is passed, the transactions in chunk will be sent via Promise.all
@@ -104,6 +97,15 @@ export type ExecutorOptions = {
      */
     confirmationFailChance: number | undefined
   }
+  //TODO: Maybe add in future
+  /**
+   *
+   * Useful in cases where there are a lot of chunks. Prevents the errors related to
+   * loss of relevance of data. F.e. If asynchronous requests are used in createTxnDataFn.
+   * However, it can create a delay between signTransaction/signAllTransaction calls
+   * Default value: true
+   */
+  // createTxnDataBeforeEachChunkSign: boolean
 }
 
 /**
@@ -154,11 +156,16 @@ export type EventHanlders<TResult> = Partial<{
   confirmationError: (error: TxnError) => void
 }>
 
-export type SentTransactionResult<TxnAdditionalResult> = {
-  txnHash: string
-  result: TxnAdditionalResult | undefined
+export type SentTransactionResult<TransactionResult> = {
+  signature: string
+  transactionResult?: TransactionResult
 }
 
-export type SentTransactionsResult<TxnAdditionalResult> = Array<
-  SentTransactionResult<TxnAdditionalResult>
+export type SentTransactionsResult<TransactionResult> = Array<
+  SentTransactionResult<TransactionResult>
 >
+
+export type BlockhashWithExpiryBlockHeight = Readonly<{
+  blockhash: Blockhash
+  lastValidBlockHeight: number
+}>
