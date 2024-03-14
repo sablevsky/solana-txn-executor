@@ -26,6 +26,7 @@ export type ExecutorOptions = {
   commitment: Commitment
   signAllChunks: number
   skipPreflight: boolean
+  maxRetries: number | undefined
   preflightCommitment: Commitment
   rejectQueueOnFirstPfError: boolean //? Stop sending other txns after first preflight error. Mostly relevant for the ledger
   chunkCallOfActionFn: boolean //? If true -- call makeActionFn for each chunk (between wallet approve). If false -- call makeActionFn for all txnsParams at once

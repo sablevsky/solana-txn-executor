@@ -84,6 +84,7 @@ const sendTransactions = async (
           await connection.sendRawTransaction(txn.serialize(), {
             skipPreflight: options.skipPreflight,
             preflightCommitment: options.preflightCommitment,
+            maxRetries: options.maxRetries,
           }),
       ),
     )
@@ -93,6 +94,7 @@ const sendTransactions = async (
       const hash = await connection.sendRawTransaction(txns[i].serialize(), {
         skipPreflight: options.skipPreflight,
         preflightCommitment: options.preflightCommitment,
+        maxRetries: options.maxRetries,
       })
 
       txnHashes.push(hash)
