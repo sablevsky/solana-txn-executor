@@ -62,11 +62,14 @@ export const signAndSendTxns = async <TResult>({
   const confirmedResults = []
 
   for (const result of results) {
-    const confirmation = await connection.confirmTransaction({
-      signature: result.txnHash,
-      blockhash: blockhash,
-      lastValidBlockHeight: lastValidBlockHeight,
-    })
+    const confirmation = await connection.confirmTransaction(
+      {
+        signature: result.txnHash,
+        blockhash: blockhash,
+        lastValidBlockHeight: lastValidBlockHeight,
+      },
+      'confirmed',
+    )
 
     if (!confirmation.value.err) {
       confirmedResults.push(result)
