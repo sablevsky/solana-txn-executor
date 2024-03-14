@@ -18,6 +18,7 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
   chunkCallOfActionFn: true,
   parallelExecutionTimeot: 0,
   preventTxnsSending: false,
+  maxRetries: undefined,
 }
 
 export class TxnExecutor<TParams, TResult> {

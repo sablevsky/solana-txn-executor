@@ -31,6 +31,7 @@ export type ExecutorOptions = {
   chunkCallOfActionFn: boolean //? If true -- call makeActionFn for each chunk (between wallet approve). If false -- call makeActionFn for all txnsParams at once
   parallelExecutionTimeot: number //? If true -- send all transactions via Promise all. If false -- send them sequentially
   preventTxnsSending: boolean //? Mock transactions result without its sending
+  maxRetries: number | undefined
   //TODO: Add webscoket result handling in future
 }
 
