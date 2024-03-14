@@ -13,6 +13,7 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
   commitment: 'confirmed',
   signAllChunks: 40, //? Set different for ledger
   skipPreflight: false,
+  maxRetries: undefined,
   preflightCommitment: 'processed',
   rejectQueueOnFirstPfError: false,
   chunkCallOfActionFn: true,
@@ -89,8 +90,8 @@ export class TxnExecutor<TParams, TResult> {
         } catch (error) {
           eventHandlers?.pfError?.(error as TxnError)
           const userRejectedTxn = hasUserRejectedTxnApprove(error as TxnError)
-          if (userRejectedTxn) return
-          if (!userRejectedTxn && options.rejectQueueOnFirstPfError) return
+          if (userRejectedTxn) break
+          if (!userRejectedTxn && options.rejectQueueOnFirstPfError) break
         }
       }
 
@@ -132,8 +133,8 @@ export class TxnExecutor<TParams, TResult> {
         } catch (error) {
           eventHandlers?.pfError?.(error as TxnError)
           const userRejectedTxn = hasUserRejectedTxnApprove(error as TxnError)
-          if (userRejectedTxn) return
-          if (!userRejectedTxn && options.rejectQueueOnFirstPfError) return
+          if (userRejectedTxn) break
+          if (!userRejectedTxn && options.rejectQueueOnFirstPfError) break
         }
       }
 
