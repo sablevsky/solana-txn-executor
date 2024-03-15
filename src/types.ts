@@ -24,22 +24,13 @@ export type WalletAndConnection = {
 }
 
 export type TxnError = {
-  logs: Array<string> | undefined
+  logs?: Array<string>
 } & Error
 
-/**
- * Data needed to create a transaction
- * Consists of instructions, signers (optional),
- * lookup tables (optional)
- * and additional result (additional data to be returned with the
- * transaction result. F.e. for an optimistic response) (optional)
- */
-// export type TxnData<TransactionResult> = {
-//   instructions: TransactionInstruction[]
-//   signers: Signer[] | undefined
-//   additionalResult: TransactionResult | undefined
-//   lookupTables: PublicKey[] | undefined
-// }
+export type BlockhashWithExpiryBlockHeight = Readonly<{
+  blockhash: Blockhash
+  lastValidBlockHeight: number
+}>
 
 /**
  * Function that creates TxnData. Acc
@@ -59,7 +50,7 @@ export type ExecutorOptions = {
   confirmOptions: ConfirmOptions
   /**
    * Amount of transactions passed to the signAllTransactions function
-   * Default value: 40
+   * Default value: 10
    * Works only if signAllTransactions is supported!
    * Max amount of transactions processed in signAllTransactions is limited by wallet provider implementation
    * Use 1 for ledger of SquadsX
@@ -69,8 +60,7 @@ export type ExecutorOptions = {
    * Stop sending other txns(chunks) after first preflight error. Mostly relevant for small values of signAllChunkSize (E.g. ledger cases)
    * Default value: false
    */
-  abortOnFirstPfError: boolean
-
+  abortOnFirstError: boolean
   /**
    * If the value exists, the transactions in chunk will be sent sequentially with the specified delay
    * If no value is passed, the transactions in chunk will be sent via Promise.all
@@ -88,75 +78,10 @@ export type ExecutorOptions = {
      * Default value: undefined
      */
     preventSending: boolean | undefined
-    /**
-     * Set the chance of unsuccessful transaction confirmation
-     * F.e. To mock an unstable network condition
-     * Works only if preventSending: true!
-     * Allowed values: [0, 1)
-     * Default value: undefined
-     */
-    confirmationFailChance: number | undefined
   }
-  //TODO: Maybe add in future
-  /**
-   *
-   * Useful in cases where there are a lot of chunks. Prevents the errors related to
-   * loss of relevance of data. F.e. If asynchronous requests are used in createTxnDataFn.
-   * However, it can create a delay between signTransaction/signAllTransaction calls
-   * Default value: true
-   */
-  // createTxnDataBeforeEachChunkSign: boolean
 }
 
-/**
- * Supported event handlers
- */
-export type EventHanlders<TResult> = Partial<{
-  /**
-   * Triggers only once before first chunk approve but after the first call of CreateTxnDataFn
-   */
-  beforeFirstApprove: () => void
-  /**
-   * Triggers before every chunk approve
-   * The first call is triggered after beforeFirstApprove
-   */
-  beforeApproveEveryChunk: () => void
-  /**
-   * Triggers if all chunks were successfully sent (no errors on preflight)
-   */
-  pfSuccessAll: (result: SentTransactionsResult<TResult>) => void
-  /**
-   * Triggers if at least one chunk was successfully sent (no errors on preflight)
-   */
-  pfSuccessSome: (result: SentTransactionsResult<TResult>) => void
-  /**
-   * Triggers every time after each chunk is successfully sent (no errors on preflight)
-   */
-  pfSuccessEach: (result: SentTransactionsResult<TResult>) => void
-  /**
-   * Triggers on every preflight error
-   */
-  pfError: (error: TxnError) => void
-  /**
-   * Triggers if all chunks have been successfully confirmed
-   */
-  confirmedAll: (result: SentTransactionsResult<TResult>) => void
-  /**
-   * Triggers if at least one chunk has been successfully confirmed
-   */
-  confirmedSome: (result: SentTransactionsResult<TResult>) => void
-  /**
-   * Triggers every time after each chunk is successfully confirmed
-   */
-  confirmedEach: (result: SentTransactionsResult<TResult>) => void
-  /**
-   * Triggers on every unsuccessfully confirmed transaction
-   * Transaction! Not chunk
-   */
-  confirmationError: (error: TxnError) => void
-}>
-
-export type SentTransactionResult<TransactionResult> = {
+type SentTransactionResult<TransactionResult> = {
   signature: string
   transactionResult?: TransactionResult
 }
@@ -165,7 +90,46 @@ export type SentTransactionsResult<TransactionResult> = Array<
   SentTransactionResult<TransactionResult>
 >
 
-export type BlockhashWithExpiryBlockHeight = Readonly<{
-  blockhash: Blockhash
-  lastValidBlockHeight: number
+export type ConfirmedTransactionsResult<TransactionResult> = {
+  confirmed: SentTransactionsResult<TransactionResult>
+  failed: SentTransactionsResult<TransactionResult>
+}
+
+/**
+ * Supported event handlers
+ */
+export type EventHanlders<TransactionResult> = Partial<{
+  /**
+   * Triggers before every chunk approve
+   */
+  beforeChunkApprove: () => void
+  /**
+   * Triggers every time after each chunk is successfully sent (no errors on preflight)
+   */
+  chunkSent: (txnsResults: SentTransactionsResult<TransactionResult>) => void
+  /**
+   * Triggers on every preflight error
+   */
+  error: (txnError: TxnError) => void
+  /**
+   * Triggers if all chunks were successfully sent (no errors on preflight)
+   */
+  sentAll: (txnsResults: SentTransactionsResult<TransactionResult>) => void
+  /**
+   * Triggers if at least one chunk was successfully sent (no errors on preflight)
+   */
+  sentSome: (txnsResults: SentTransactionsResult<TransactionResult>) => void
+  /**
+   * Triggers on the result of each chunk confirmation.
+   * Contains both confirmed and failed results.
+   * Triggers when the result of all transactions confirmations in the chunk is known,
+   * regardless of the success of the confirmation
+   */
+  chunkConfirmed: ({ confirmed, failed }: ConfirmedTransactionsResult<TransactionResult>) => void
+  /**
+   * Triggers on the result of all chunks confirmation.
+   * Contains both confirmed and failed results.
+   * Will never execute if there is an error in the sending/preflight step
+   */
+  confirmedAll: ({ confirmed, failed }: ConfirmedTransactionsResult<TransactionResult>) => void
 }>
