@@ -56,9 +56,9 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
     return this
   }
 
-  public on<K extends keyof EventHanlders<CreateTransactionFnParams>>(
+  public on<K extends keyof EventHanlders<TransactionResult>>(
     type: K,
-    handler: EventHanlders<CreateTransactionFnParams>[K],
+    handler: EventHanlders<TransactionResult>[K],
   ) {
     this.eventHandlers = {
       ...this.eventHandlers,
