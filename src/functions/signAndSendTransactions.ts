@@ -12,7 +12,7 @@ export const signAndSendTransactions = async ({
   transactions,
   walletAndConnection,
   options,
-}: SignAndSendTransactionsProps) => {
+}: SignAndSendTransactionsProps): Promise<string[]> => {
   const { connection, wallet } = walletAndConnection
 
   if (!wallet.signAllTransactions || options.signAllChunkSize === 1) {

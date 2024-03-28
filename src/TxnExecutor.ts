@@ -108,7 +108,7 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
 
         const results = signatures.map((signature, idx) => ({
           signature,
-          transactionResult: transactionCreationData?.[idx]?.result,
+          result: transactionCreationData?.[idx]?.result,
         }))
         signAndSendTxnsResults.push(...results)
 

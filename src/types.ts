@@ -83,7 +83,7 @@ export type ExecutorOptions = {
 
 type SentTransactionResult<TransactionResult> = {
   signature: string
-  transactionResult?: TransactionResult
+  result?: TransactionResult
 }
 
 export type SentTransactionsResult<TransactionResult> = Array<
