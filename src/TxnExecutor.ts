@@ -1,56 +1,65 @@
-import { hasUserRejectedTxnApprove, signAndSendTxns } from './helpers'
+import { confirmTransactions, createTransaction, signAndSendTransactions } from './functions'
 import {
+  ConfirmedTransactionsResult,
+  CreateTransactionDataFn,
   EventHanlders,
   ExecutorOptions,
-  MakeActionFn,
-  SendTxnsResult,
+  SentTransactionsResult,
   TxnError,
   WalletAndConnection,
 } from './types'
-import { chunk } from 'lodash'
+import { didUserRejectTxnSigning } from './utils'
+import { chunk, merge } from 'lodash'
 
 export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
-  commitment: 'confirmed',
-  signAllChunks: 40, //? Set different for ledger
-  skipPreflight: false,
-  maxRetries: undefined,
-  preflightCommitment: 'processed',
-  rejectQueueOnFirstPfError: false,
-  chunkCallOfActionFn: true,
-  parallelExecutionTimeot: 0,
-  preventTxnsSending: false,
+  confirmOptions: {
+    skipPreflight: undefined,
+    commitment: undefined,
+    preflightCommitment: undefined,
+    maxRetries: undefined,
+    minContextSlot: undefined,
+  },
+  signAllChunkSize: 10,
+  abortOnFirstError: false,
+  sequentialSendingDelay: undefined,
+  debug: {
+    preventSending: undefined,
+  },
 }
 
-export class TxnExecutor<TParams, TResult> {
-  private makeActionFn: MakeActionFn<TParams, TResult>
-  private txnsParams: TParams[] = []
+export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
+  private createTransactionDataFn: CreateTransactionDataFn<
+    CreateTransactionFnParams,
+    TransactionResult
+  >
+  private txnsParams: ReadonlyArray<CreateTransactionFnParams> = []
   private options: ExecutorOptions = DEFAULT_EXECUTOR_OPTIONS
   private walletAndConnection: WalletAndConnection
-  private eventHandlers: EventHanlders<TResult> = {}
+  private eventHandlers: EventHanlders<TransactionResult> = {}
   constructor(
-    makeActionFn: MakeActionFn<TParams, TResult>,
+    createTransactionDataFn: CreateTransactionDataFn<CreateTransactionFnParams, TransactionResult>,
     walletAndConnection: WalletAndConnection,
     options?: Partial<ExecutorOptions>,
   ) {
-    this.makeActionFn = makeActionFn
+    this.createTransactionDataFn = createTransactionDataFn
     this.walletAndConnection = walletAndConnection
-    this.options = {
-      ...this.options,
-      ...options,
-    }
+    this.options = merge(this.options, options)
   }
 
-  public addTxnParam(param: TParams) {
+  public addTransactionParam(param: CreateTransactionFnParams) {
     this.txnsParams = [...this.txnsParams, param]
     return this
   }
 
-  public addTxnParams(params: TParams[]) {
+  public addTransactionParams(params: CreateTransactionFnParams[]) {
     this.txnsParams = [...this.txnsParams, ...params]
     return this
   }
 
-  public on<K extends keyof EventHanlders<TResult>>(type: K, handler: EventHanlders<TResult>[K]) {
+  public on<K extends keyof EventHanlders<CreateTransactionFnParams>>(
+    type: K,
+    handler: EventHanlders<CreateTransactionFnParams>[K],
+  ) {
     this.eventHandlers = {
       ...this.eventHandlers,
       [type]: handler,
@@ -59,95 +68,98 @@ export class TxnExecutor<TParams, TResult> {
   }
 
   public async execute() {
-    if (this.options.chunkCallOfActionFn) {
-      return await this.executeChunked()
+    const { txnsParams, createTransactionDataFn, walletAndConnection, options, eventHandlers } =
+      this
+
+    const txnsDataChunks = chunk(txnsParams, options.signAllChunkSize)
+
+    const signAndSendTxnsResults: SentTransactionsResult<TransactionResult> = []
+    const confirmedTxnsResults: ConfirmedTransactionsResult<TransactionResult> = {
+      confirmed: [],
+      failed: [],
     }
-    return await this.executeDefault()
-  }
+    for (const chunk of txnsDataChunks) {
+      try {
+        const transactionCreationData = await Promise.all(
+          chunk.map((params) => createTransactionDataFn(params, { ...walletAndConnection })),
+        )
 
-  private async executeDefault() {
-    try {
-      const { txnsParams, makeActionFn, walletAndConnection, options, eventHandlers } = this
+        const { blockhash, lastValidBlockHeight } =
+          await walletAndConnection.connection.getLatestBlockhash()
 
-      const txnsData = await Promise.all(
-        txnsParams.map((params) => makeActionFn(params, { ...walletAndConnection })),
-      )
+        const transactions = await Promise.all(
+          transactionCreationData.map((txnData) =>
+            createTransaction({
+              transactionCreationData: txnData,
+              blockhash,
+              connection: walletAndConnection.connection,
+              payerKey: walletAndConnection.wallet.publicKey,
+            }),
+          ),
+        )
 
-      eventHandlers?.beforeFirstApprove?.()
+        eventHandlers?.beforeChunkApprove?.()
 
-      const txnChunks = chunk(txnsData, options.signAllChunks)
+        const signatures = await signAndSendTransactions({
+          transactions,
+          walletAndConnection,
+          options,
+        })
 
-      const signAndSendTxnsResults: SendTxnsResult<TResult> = []
-      for (const chunk of txnChunks) {
-        try {
-          const result = await signAndSendTxns({
-            txnsData: chunk,
-            walletAndConnection,
-            eventHandlers,
-            options,
-          })
-          signAndSendTxnsResults.push(...result)
-        } catch (error) {
-          eventHandlers?.pfError?.(error as TxnError)
-          const userRejectedTxn = hasUserRejectedTxnApprove(error as TxnError)
-          if (userRejectedTxn) break
-          if (!userRejectedTxn && options.rejectQueueOnFirstPfError) break
-        }
-      }
+        const results = signatures.map((signature, idx) => ({
+          signature,
+          transactionResult: transactionCreationData?.[idx]?.result,
+        }))
+        signAndSendTxnsResults.push(...results)
 
-      if (signAndSendTxnsResults.length === txnChunks.flat().length) {
-        eventHandlers?.pfSuccessAll?.(signAndSendTxnsResults)
-      } else if (signAndSendTxnsResults.length) {
-        eventHandlers?.pfSuccessSome?.(signAndSendTxnsResults)
-      }
+        eventHandlers?.chunkSent?.(results)
 
-      return signAndSendTxnsResults
-    } catch (error) {
-      this.eventHandlers?.pfError?.(error as TxnError)
-    }
-  }
-
-  private async executeChunked() {
-    try {
-      const { txnsParams, makeActionFn, walletAndConnection, options, eventHandlers } = this
-
-      const txnsDataChunks = chunk(txnsParams, options.signAllChunks)
-
-      eventHandlers?.beforeFirstApprove?.()
-
-      const signAndSendTxnsResults: SendTxnsResult<TResult> = []
-      for (const chunk of txnsDataChunks) {
-        try {
-          const txnsData = await Promise.all(
-            chunk.map((params) => makeActionFn(params, { ...walletAndConnection })),
+        confirmTransactions({
+          signatures,
+          blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
+          connection: walletAndConnection.connection,
+          options,
+        }).then(({ confirmed: confirmedSignatures, failed: failedSignatures }) => {
+          const confirmedResults = results.filter(({ signature }) =>
+            confirmedSignatures.includes(signature),
           )
+          confirmedTxnsResults.confirmed.push(...confirmedResults)
 
-          const result = await signAndSendTxns({
-            txnsData,
-            walletAndConnection,
-            eventHandlers,
-            options,
+          const failedResults = results.filter(({ signature }) =>
+            failedSignatures.includes(signature),
+          )
+          confirmedTxnsResults.failed.push(...failedResults)
+
+          eventHandlers?.chunkConfirmed?.({
+            confirmed: confirmedResults,
+            failed: failedResults,
           })
 
-          signAndSendTxnsResults.push(...result)
-        } catch (error) {
-          eventHandlers?.pfError?.(error as TxnError)
-          const userRejectedTxn = hasUserRejectedTxnApprove(error as TxnError)
-          if (userRejectedTxn) break
-          if (!userRejectedTxn && options.rejectQueueOnFirstPfError) break
-        }
+          if (
+            confirmedTxnsResults.confirmed.length + confirmedTxnsResults.failed.length ===
+            txnsParams.length
+          ) {
+            eventHandlers?.confirmedAll?.({
+              confirmed: confirmedResults,
+              failed: failedResults,
+            })
+          }
+        })
+      } catch (error) {
+        eventHandlers?.error?.(error as TxnError)
+        const userRejectedTxn = didUserRejectTxnSigning(error as TxnError)
+        if (userRejectedTxn) break
+        if (!userRejectedTxn && options.abortOnFirstError) break
       }
-
-      if (signAndSendTxnsResults.length === txnsDataChunks.flat().length) {
-        eventHandlers?.pfSuccessAll?.(signAndSendTxnsResults)
-      }
-      if (signAndSendTxnsResults.length) {
-        eventHandlers?.pfSuccessSome?.(signAndSendTxnsResults)
-      }
-
-      return signAndSendTxnsResults
-    } catch (error) {
-      this.eventHandlers?.pfError?.(error as TxnError)
     }
+
+    if (signAndSendTxnsResults.length === txnsDataChunks.flat().length) {
+      eventHandlers?.sentAll?.(signAndSendTxnsResults)
+    }
+    if (signAndSendTxnsResults.length) {
+      eventHandlers?.sentSome?.(signAndSendTxnsResults)
+    }
+
+    return signAndSendTxnsResults
   }
 }
