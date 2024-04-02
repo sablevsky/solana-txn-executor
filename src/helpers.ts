@@ -31,7 +31,7 @@ export const signAndSendTxns = async <TResult>({
   const { connection, wallet } = walletAndConnection
 
   const { context, value } = await connection.getLatestBlockhashAndContext({
-    commitment: options.commitment,
+    commitment: options.preflightCommitment,
   })
 
   const txns = (
