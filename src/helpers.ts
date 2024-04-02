@@ -30,14 +30,16 @@ export const signAndSendTxns = async <TResult>({
 }): Promise<SendTxnsResult<TResult>> => {
   const { connection, wallet } = walletAndConnection
 
-  const { blockhash } = await connection.getLatestBlockhash()
+  const { context, value } = await connection.getLatestBlockhashAndContext({
+    commitment: options.commitment,
+  })
 
   const txns = (
     await Promise.all(
       txnsData.map((txnData) =>
         createTxn({
           txnData,
-          blockhash,
+          blockhash: value.blockhash,
           walletAndConnection,
         }),
       ),
@@ -52,7 +54,7 @@ export const signAndSendTxns = async <TResult>({
 
   const signedTxns = await wallet.signAllTransactions(txns)
 
-  const txnHashes = await sendTransactions(signedTxns, walletAndConnection, options)
+  const txnHashes = await sendTransactions(signedTxns, walletAndConnection, options, context.slot)
 
   const results = txnHashes.map((txnHash, idx) => ({
     txnHash,
@@ -68,6 +70,7 @@ const sendTransactions = async (
   txns: VersionedTransaction[],
   walletAndConnection: WalletAndConnection,
   options: ExecutorOptions,
+  minContextSlot: number,
 ) => {
   const { connection } = walletAndConnection
 
@@ -79,22 +82,41 @@ const sendTransactions = async (
   const txnHashes: Array<string> = []
   if (!options.parallelExecutionTimeot) {
     const hashes = await Promise.all(
-      txns.map(
-        async (txn) =>
-          await connection.sendRawTransaction(txn.serialize(), {
-            skipPreflight: options.skipPreflight,
-            preflightCommitment: options.preflightCommitment,
-            maxRetries: options.maxRetries,
-          }),
-      ),
+      txns.map(async (txn) => {
+        const result = await connection.simulateTransaction(txn, {
+          commitment: options.commitment,
+          minContextSlot,
+        })
+
+        if (result.value.err) {
+          throw result.value.err
+        }
+
+        return await connection.sendRawTransaction(txn.serialize(), {
+          skipPreflight: options.skipPreflight,
+          preflightCommitment: options.preflightCommitment,
+          maxRetries: options.maxRetries,
+          minContextSlot,
+        })
+      }),
     )
     txnHashes.push(...hashes)
   } else {
     for (let i = 0; i < txns.length; ++i) {
+      const result = await connection.simulateTransaction(txns[i], {
+        commitment: options.commitment,
+        minContextSlot,
+      })
+
+      if (result.value.err) {
+        throw result.value.err
+      }
+
       const hash = await connection.sendRawTransaction(txns[i].serialize(), {
         skipPreflight: options.skipPreflight,
         preflightCommitment: options.preflightCommitment,
         maxRetries: options.maxRetries,
+        minContextSlot,
       })
 
       txnHashes.push(hash)

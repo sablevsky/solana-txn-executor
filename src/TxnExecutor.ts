@@ -14,7 +14,7 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
   signAllChunks: 40, //? Set different for ledger
   skipPreflight: false,
   maxRetries: undefined,
-  preflightCommitment: 'processed',
+  preflightCommitment: 'confirmed',
   rejectQueueOnFirstPfError: false,
   chunkCallOfActionFn: true,
   parallelExecutionTimeot: 0,
