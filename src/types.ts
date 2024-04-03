@@ -45,9 +45,9 @@ export type CreateTransactionDataFn<CreateTransactionFnParams, TransactionResult
 export type ExecutorOptions = {
   /**
    * Options for sending transactions
-   * Default value: { skipPreflight: false, commitment: 'confirmed', preflightCommitment: 'processed', maxRetries: undefined }
+   * Default value: { skipPreflight: false, commitment: 'confirmed', preflightCommitment: 'processed', maxRetries: undefined, minContextSlot: undefined }
    */
-  confirmOptions: Omit<ConfirmOptions, 'minContextSlot'>
+  confirmOptions: ConfirmOptions
   /**
    * Amount of transactions passed to the signAllTransactions function
    * Default value: 10

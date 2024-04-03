@@ -17,6 +17,7 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
     commitment: undefined,
     preflightCommitment: undefined,
     maxRetries: undefined,
+    minContextSlot: undefined,
   },
   signAllChunkSize: 10,
   abortOnFirstError: false,
@@ -83,16 +84,14 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
           chunk.map((params) => createTransactionDataFn(params, { ...walletAndConnection })),
         )
 
-        const { context, value } =
-          await walletAndConnection.connection.getLatestBlockhashAndContext({
-            commitment: options.confirmOptions.preflightCommitment,
-          })
+        const { blockhash, lastValidBlockHeight } =
+          await walletAndConnection.connection.getLatestBlockhash()
 
         const transactions = await Promise.all(
           transactionCreationData.map((txnData) =>
             createTransaction({
               transactionCreationData: txnData,
-              blockhash: value.blockhash,
+              blockhash,
               connection: walletAndConnection.connection,
               payerKey: walletAndConnection.wallet.publicKey,
             }),
@@ -104,7 +103,6 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
         const signatures = await signAndSendTransactions({
           transactions,
           walletAndConnection,
-          minContextSlot: context.slot,
           options,
         })
 
@@ -120,10 +118,7 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
 
         confirmTransactions({
           signatures,
-          blockhashWithExpiryBlockHeight: {
-            blockhash: value.blockhash,
-            lastValidBlockHeight: value.lastValidBlockHeight,
-          },
+          blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
           connection: walletAndConnection.connection,
           options,
         }).then(({ confirmed: confirmedSignatures, failed: failedSignatures }) => {
