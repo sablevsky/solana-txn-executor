@@ -1,5 +1,9 @@
 import { DEFAULT_CONFIRMATION_TIMEOT } from '../constants'
-import { BlockhashWithExpiryBlockHeight, ExecutorOptions } from '../types'
+import {
+  BlockhashWithExpiryBlockHeight,
+  ConfirmTransactionErrorReason,
+  ExecutorOptions,
+} from '../types'
 import { Connection } from '@solana/web3.js'
 
 export type ConfirmTransactionsProps = {
@@ -42,8 +46,8 @@ export const confirmTransactions = async ({
       if (result.status === 'rejected') {
         const { reason } = result
 
-        if (typeof reason === 'string') {
-          const errorName = getConfirmTransactionErrorFromString(reason)
+        if (reason instanceof Error) {
+          const errorName = getConfirmTransactionErrorFromString(reason.name)
           acc.failed.push({ signature, reason: errorName })
         } else {
           acc.failed.push({ signature, reason: ConfirmTransactionErrorReason.ConfirmationFailed })
@@ -103,10 +107,4 @@ const getConfirmTransactionErrorFromString = (errorName: string) => {
     Object.values(ConfirmTransactionErrorReason).find((error) => error === errorName) ??
     ConfirmTransactionErrorReason.ConfirmationFailed
   )
-}
-
-export enum ConfirmTransactionErrorReason {
-  ConfirmationFailed = 'ConfirmationFailed',
-  TimeoutError = 'TimeoutError',
-  AbortError = 'AbortError',
 }

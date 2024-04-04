@@ -1,12 +1,5 @@
 import { TransactionCreationData } from './functions/createTransaction'
-import {
-  Blockhash,
-  Commitment,
-  ConfirmOptions,
-  Connection,
-  PublicKey,
-  VersionedTransaction,
-} from '@solana/web3.js'
+import { Blockhash, Commitment, Connection, PublicKey, VersionedTransaction } from '@solana/web3.js'
 
 /**
  * The wallet must contain a publicKey and support at least signTransaction method
@@ -103,9 +96,25 @@ export type SentTransactionsResult<TransactionResult> = Array<
   SentTransactionResult<TransactionResult>
 >
 
+export type ConfirmationFailedResult<TransactionResult> = {
+  signature: string
+  reason: ConfirmTransactionErrorReason
+  result?: TransactionResult
+}
+
+export type ConfirmationFailedResults<TransactionResult> = Array<
+  ConfirmationFailedResult<TransactionResult>
+>
+
 export type ConfirmedTransactionsResult<TransactionResult> = {
   confirmed: SentTransactionsResult<TransactionResult>
-  failed: SentTransactionsResult<TransactionResult>
+  failed: ConfirmationFailedResults<TransactionResult>
+}
+
+export enum ConfirmTransactionErrorReason {
+  ConfirmationFailed = 'ConfirmationFailed',
+  TimeoutError = 'TimeoutError',
+  AbortError = 'AbortError',
 }
 
 /**

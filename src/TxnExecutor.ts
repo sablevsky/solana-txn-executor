@@ -10,7 +10,7 @@ import {
   WalletAndConnection,
 } from './types'
 import { didUserRejectTxnSigning } from './utils'
-import { chunk, merge } from 'lodash'
+import { chain, chunk, merge } from 'lodash'
 
 export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
   confirmOptions: {
@@ -129,23 +129,32 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
             connection: walletAndConnection.connection,
             options,
             slot: context.slot,
-          }).then(({ confirmed: confirmedSignatures, failed: failedSignatures }) => {
+          }).then(({ confirmed: confirmedSignatures, failed: confirmationFailedResults }) => {
             const confirmedResults = results.filter(({ signature }) =>
               confirmedSignatures.includes(signature),
             )
             confirmedTxnsResults.confirmed.push(...confirmedResults)
 
-            //TODO Fix
-            const failedResults = results.filter(({ signature }) =>
-              failedSignatures.find(
-                ({ signature: failedSignature }) => failedSignature === signature,
-              ),
-            )
+            const failedResults = chain(confirmationFailedResults)
+              .map(({ reason, signature }) => {
+                const result = results.find(
+                  ({ signature: resSignature }) => signature === resSignature,
+                )
+                if (!result) return null
+                return {
+                  reason,
+                  signature: result.signature,
+                  result: result.result,
+                }
+              })
+              .compact()
+              .value()
+
             confirmedTxnsResults.failed.push(...failedResults)
 
             eventHandlers?.chunkConfirmed?.({
               confirmed: confirmedResults,
-              failed: failedResults,
+              failed: confirmationFailedResults,
             })
 
             if (
@@ -154,7 +163,7 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
             ) {
               eventHandlers?.confirmedAll?.({
                 confirmed: confirmedResults,
-                failed: failedResults,
+                failed: confirmationFailedResults,
               })
             }
           })
