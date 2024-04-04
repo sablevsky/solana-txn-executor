@@ -85,7 +85,9 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
         )
 
         const { blockhash, lastValidBlockHeight } =
-          await walletAndConnection.connection.getLatestBlockhash()
+          await walletAndConnection.connection.getLatestBlockhash(
+            options.confirmOptions.preflightCommitment,
+          )
 
         const transactions = await Promise.all(
           transactionCreationData.map((txnData) =>
