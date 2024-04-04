@@ -44,7 +44,7 @@ const sendTransactionsSequential = async ({
   const signatures: string[] = []
 
   for (let i = 0; i < transactions.length; ++i) {
-    const hash = await connection.sendRawTransaction(transactions[i].serialize(), {
+    const hash = await connection.sendTransaction(transactions[i], {
       skipPreflight: options.confirmOptions.skipPreflight,
       preflightCommitment: options.confirmOptions.preflightCommitment,
       maxRetries: options.confirmOptions.maxRetries,
@@ -67,7 +67,7 @@ const sendTransactionsParallel = async ({
   const signatures = await Promise.all(
     transactions.map(
       async (txn) =>
-        await connection.sendRawTransaction(txn.serialize(), {
+        await connection.sendTransaction(txn, {
           skipPreflight: options.confirmOptions.skipPreflight,
           preflightCommitment: options.confirmOptions.preflightCommitment,
           maxRetries: options.confirmOptions.maxRetries,
