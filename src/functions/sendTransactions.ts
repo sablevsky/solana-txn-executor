@@ -6,18 +6,21 @@ export type SendTransactionsProps = {
   transactions: VersionedTransaction[]
   connection: Connection
   options: ExecutorOptions
+  slot: number
 }
 
 export const sendTransactions = async ({
   transactions,
   connection,
   options,
+  slot,
 }: SendTransactionsProps) => {
   if (options.debug.preventSending) {
     return await sendTransactionsMock({
       transactions,
       connection,
       options,
+      slot,
     })
   }
 
@@ -26,6 +29,7 @@ export const sendTransactions = async ({
       transactions,
       connection,
       options,
+      slot,
     })
   }
 
@@ -33,6 +37,7 @@ export const sendTransactions = async ({
     transactions,
     connection,
     options,
+    slot,
   })
 }
 
@@ -40,6 +45,7 @@ const sendTransactionsSequential = async ({
   transactions,
   connection,
   options,
+  slot,
 }: SendTransactionsProps) => {
   const signatures: string[] = []
 
@@ -48,7 +54,7 @@ const sendTransactionsSequential = async ({
       skipPreflight: options.confirmOptions.skipPreflight,
       preflightCommitment: options.confirmOptions.preflightCommitment,
       maxRetries: options.confirmOptions.maxRetries,
-      minContextSlot: options.confirmOptions.minContextSlot,
+      minContextSlot: slot,
     })
 
     signatures.push(hash)
@@ -63,6 +69,7 @@ const sendTransactionsParallel = async ({
   transactions,
   connection,
   options,
+  slot,
 }: SendTransactionsProps) => {
   const signatures = await Promise.all(
     transactions.map(
@@ -71,7 +78,7 @@ const sendTransactionsParallel = async ({
           skipPreflight: options.confirmOptions.skipPreflight,
           preflightCommitment: options.confirmOptions.preflightCommitment,
           maxRetries: options.confirmOptions.maxRetries,
-          minContextSlot: options.confirmOptions.minContextSlot,
+          minContextSlot: slot,
         }),
     ),
   )

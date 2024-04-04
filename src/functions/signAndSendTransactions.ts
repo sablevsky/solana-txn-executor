@@ -6,12 +6,14 @@ export type SignAndSendTransactionsProps = {
   transactions: VersionedTransaction[]
   walletAndConnection: WalletAndConnection
   options: ExecutorOptions
+  slot: number
 }
 
 export const signAndSendTransactions = async ({
   transactions,
   walletAndConnection,
   options,
+  slot,
 }: SignAndSendTransactionsProps): Promise<string[]> => {
   const { connection, wallet } = walletAndConnection
 
@@ -24,6 +26,7 @@ export const signAndSendTransactions = async ({
         transactions: [signedTransaction],
         connection: connection,
         options,
+        slot,
       })
 
       signatures.push(signature)
@@ -37,6 +40,7 @@ export const signAndSendTransactions = async ({
     transactions: signedTxns,
     connection: connection,
     options,
+    slot,
   })
 
   return signatures

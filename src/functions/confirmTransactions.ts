@@ -6,6 +6,7 @@ export type ConfirmTransactionsProps = {
   connection: Connection
   blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
   options: ExecutorOptions
+  slot: number
 }
 
 export type ConfirmTransactionsResult = {
@@ -18,6 +19,7 @@ export const confirmTransactions = async ({
   connection,
   blockhashWithExpiryBlockHeight,
   options,
+  slot,
 }: ConfirmTransactionsProps) => {
   const { blockhash, lastValidBlockHeight } = blockhashWithExpiryBlockHeight
 
@@ -29,6 +31,7 @@ export const confirmTransactions = async ({
             signature,
             lastValidBlockHeight,
             blockhash,
+            minContextSlot: slot,
           },
           options.confirmOptions.commitment,
         ),

@@ -84,16 +84,17 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
           chunk.map((params) => createTransactionDataFn(params, { ...walletAndConnection })),
         )
 
-        const { blockhash, lastValidBlockHeight } =
-          await walletAndConnection.connection.getLatestBlockhash(
+        const { value, context } =
+          await walletAndConnection.connection.getLatestBlockhashAndContext(
             options.confirmOptions.preflightCommitment,
           )
+        const { blockhash, lastValidBlockHeight } = value
 
         const transactions = await Promise.all(
           transactionCreationData.map((txnData) =>
             createTransaction({
               transactionCreationData: txnData,
-              blockhash,
+              blockhash: blockhash,
               connection: walletAndConnection.connection,
               payerKey: walletAndConnection.wallet.publicKey,
             }),
@@ -106,6 +107,7 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
           transactions,
           walletAndConnection,
           options,
+          slot: context.slot,
         })
 
         const results: SentTransactionsResult<TransactionResult> = signatures.map(
@@ -123,6 +125,7 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
           blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
           connection: walletAndConnection.connection,
           options,
+          slot: context.slot,
         }).then(({ confirmed: confirmedSignatures, failed: failedSignatures }) => {
           const confirmedResults = results.filter(({ signature }) =>
             confirmedSignatures.includes(signature),
