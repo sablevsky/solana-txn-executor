@@ -1,6 +1,7 @@
 import { TransactionCreationData } from './functions/createTransaction'
 import {
   Blockhash,
+  Commitment,
   ConfirmOptions,
   Connection,
   PublicKey,
@@ -47,7 +48,18 @@ export type ExecutorOptions = {
    * Options for sending transactions
    * Default value: { skipPreflight: false, commitment: 'confirmed', preflightCommitment: 'processed', maxRetries: undefined, minContextSlot: undefined }
    */
-  confirmOptions: ConfirmOptions
+  confirmOptions: {
+    /** disable transaction verification step */
+    skipPreflight?: boolean
+    /** desired commitment level */
+    commitment?: Commitment
+    /** preflight commitment level */
+    preflightCommitment?: Commitment
+    /** Maximum number of times for the RPC node to retry sending the transaction to the leader. */
+    maxRetries?: number
+    /** Transaction confirmation tracking forced termination timeout */
+    confirmationTimeout?: number
+  }
   /**
    * Amount of transactions passed to the signAllTransactions function
    * Default value: 10
@@ -71,6 +83,7 @@ export type ExecutorOptions = {
   /**
    * Parameters for debug
    */
+
   debug: {
     /**
      * Prevent sending transactions via RPC

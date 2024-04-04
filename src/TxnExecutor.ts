@@ -1,3 +1,4 @@
+import { DEFAULT_CONFIRMATION_TIMEOT } from './constants'
 import { confirmTransactions, createTransaction, signAndSendTransactions } from './functions'
 import {
   ConfirmedTransactionsResult,
@@ -17,7 +18,7 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
     commitment: undefined,
     preflightCommitment: undefined,
     maxRetries: undefined,
-    minContextSlot: undefined,
+    confirmationTimeout: DEFAULT_CONFIRMATION_TIMEOT,
   },
   signAllChunkSize: 10,
   abortOnFirstError: false,
@@ -120,38 +121,44 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
 
         eventHandlers?.chunkSent?.(results)
 
-        confirmTransactions({
-          signatures,
-          blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
-          connection: walletAndConnection.connection,
-          options,
-          slot: context.slot,
-        }).then(({ confirmed: confirmedSignatures, failed: failedSignatures }) => {
-          const confirmedResults = results.filter(({ signature }) =>
-            confirmedSignatures.includes(signature),
-          )
-          confirmedTxnsResults.confirmed.push(...confirmedResults)
+        //? Track the confirmation of transactions in chunks only if specific handlers exist
+        if (eventHandlers.confirmedAll || eventHandlers.chunkConfirmed) {
+          confirmTransactions({
+            signatures,
+            blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
+            connection: walletAndConnection.connection,
+            options,
+            slot: context.slot,
+          }).then(({ confirmed: confirmedSignatures, failed: failedSignatures }) => {
+            const confirmedResults = results.filter(({ signature }) =>
+              confirmedSignatures.includes(signature),
+            )
+            confirmedTxnsResults.confirmed.push(...confirmedResults)
 
-          const failedResults = results.filter(({ signature }) =>
-            failedSignatures.includes(signature),
-          )
-          confirmedTxnsResults.failed.push(...failedResults)
+            //TODO Fix
+            const failedResults = results.filter(({ signature }) =>
+              failedSignatures.find(
+                ({ signature: failedSignature }) => failedSignature === signature,
+              ),
+            )
+            confirmedTxnsResults.failed.push(...failedResults)
 
-          eventHandlers?.chunkConfirmed?.({
-            confirmed: confirmedResults,
-            failed: failedResults,
-          })
-
-          if (
-            confirmedTxnsResults.confirmed.length + confirmedTxnsResults.failed.length ===
-            txnsParams.length
-          ) {
-            eventHandlers?.confirmedAll?.({
+            eventHandlers?.chunkConfirmed?.({
               confirmed: confirmedResults,
               failed: failedResults,
             })
-          }
-        })
+
+            if (
+              confirmedTxnsResults.confirmed.length + confirmedTxnsResults.failed.length ===
+              txnsParams.length
+            ) {
+              eventHandlers?.confirmedAll?.({
+                confirmed: confirmedResults,
+                failed: failedResults,
+              })
+            }
+          })
+        }
       } catch (error) {
         eventHandlers?.error?.(error as TxnError)
         const userRejectedTxn = didUserRejectTxnSigning(error as TxnError)
