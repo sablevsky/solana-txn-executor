@@ -1,5 +1,11 @@
 import { TransactionCreationData } from './functions/createTransaction'
-import { Blockhash, Commitment, Connection, PublicKey, VersionedTransaction } from '@solana/web3.js'
+import {
+  Blockhash,
+  ConfirmOptions,
+  Connection,
+  PublicKey,
+  VersionedTransaction,
+} from '@solana/web3.js'
 
 /**
  * The wallet must contain a publicKey and support at least signTransaction method
@@ -41,18 +47,7 @@ export type ExecutorOptions = {
    * Options for sending transactions
    * Default value: { skipPreflight: false, commitment: 'confirmed', preflightCommitment: 'processed', maxRetries: undefined, minContextSlot: undefined }
    */
-  confirmOptions: {
-    /** disable transaction verification step */
-    skipPreflight?: boolean
-    /** desired commitment level */
-    commitment?: Commitment
-    /** preflight commitment level */
-    preflightCommitment?: Commitment
-    /** Maximum number of times for the RPC node to retry sending the transaction to the leader. */
-    maxRetries?: number
-    /** Transaction confirmation tracking forced termination timeout */
-    confirmationTimeout?: number
-  }
+  confirmOptions: ConfirmOptions
   /**
    * Amount of transactions passed to the signAllTransactions function
    * Default value: 10
@@ -95,25 +90,9 @@ export type SentTransactionsResult<TransactionResult> = Array<
   SentTransactionResult<TransactionResult>
 >
 
-export type ConfirmationFailedResult<TransactionResult> = {
-  signature: string
-  reason: ConfirmTransactionErrorReason
-  result?: TransactionResult
-}
-
-export type ConfirmationFailedResults<TransactionResult> = Array<
-  ConfirmationFailedResult<TransactionResult>
->
-
 export type ConfirmedTransactionsResult<TransactionResult> = {
   confirmed: SentTransactionsResult<TransactionResult>
-  failed: ConfirmationFailedResults<TransactionResult>
-}
-
-export enum ConfirmTransactionErrorReason {
-  ConfirmationFailed = 'ConfirmationFailed',
-  TimeoutError = 'TimeoutError',
-  AbortError = 'AbortError',
+  failed: SentTransactionsResult<TransactionResult>
 }
 
 /**

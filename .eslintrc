@@ -25,8 +25,7 @@
   },
   "globals": {
     "setTimeout": false,
-    "AbortController": false,
-    "AbortSignal": false
+    "AbortController": false
   },
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
