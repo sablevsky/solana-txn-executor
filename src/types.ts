@@ -76,7 +76,6 @@ export type ExecutorOptions = {
   /**
    * Parameters for debug
    */
-
   debug: {
     /**
      * Prevent sending transactions via RPC
