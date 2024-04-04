@@ -1,4 +1,9 @@
-import { BlockhashWithExpiryBlockHeight, ExecutorOptions } from '../types'
+import { DEFAULT_CONFIRMATION_TIMEOT } from '../constants'
+import {
+  BlockhashWithExpiryBlockHeight,
+  ConfirmTransactionErrorReason,
+  ExecutorOptions,
+} from '../types'
 import { Connection } from '@solana/web3.js'
 
 export type ConfirmTransactionsProps = {
@@ -11,7 +16,7 @@ export type ConfirmTransactionsProps = {
 
 export type ConfirmTransactionsResult = {
   confirmed: string[]
-  failed: string[]
+  failed: { signature: string; reason: ConfirmTransactionErrorReason }[]
 }
 
 export const confirmTransactions = async ({
@@ -21,20 +26,16 @@ export const confirmTransactions = async ({
   options,
   slot,
 }: ConfirmTransactionsProps) => {
-  const { blockhash, lastValidBlockHeight } = blockhashWithExpiryBlockHeight
-
   const results = await Promise.allSettled(
     signatures.map(
       async (signature) =>
-        await connection.confirmTransaction(
-          {
-            signature,
-            lastValidBlockHeight,
-            blockhash,
-            minContextSlot: slot,
-          },
-          options.confirmOptions.commitment,
-        ),
+        await confirmTransaction({
+          signature,
+          connection,
+          blockhashWithExpiryBlockHeight,
+          options,
+          slot,
+        }),
     ),
   )
 
@@ -43,12 +44,15 @@ export const confirmTransactions = async ({
       const signature = signatures[idx]
 
       if (result.status === 'rejected') {
-        acc.failed.push(signature)
-        return acc
-      }
+        const { reason } = result
 
-      if (result.status === 'fulfilled' && result.value.value.err) {
-        acc.failed.push(signature)
+        if (reason instanceof Error) {
+          const errorName = getConfirmTransactionErrorFromString(reason.name)
+          acc.failed.push({ signature, reason: errorName })
+        } else {
+          acc.failed.push({ signature, reason: ConfirmTransactionErrorReason.ConfirmationFailed })
+        }
+
         return acc
       }
 
@@ -59,5 +63,48 @@ export const confirmTransactions = async ({
       confirmed: [],
       failed: [],
     },
+  )
+}
+
+export type ConfirmTransactionProps = {
+  signature: string
+  connection: Connection
+  blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
+  options: ExecutorOptions
+  slot: number
+}
+const confirmTransaction = async ({
+  signature,
+  connection,
+  blockhashWithExpiryBlockHeight,
+  options,
+  slot,
+}: ConfirmTransactionProps) => {
+  const { blockhash, lastValidBlockHeight } = blockhashWithExpiryBlockHeight
+
+  const signal = AbortSignal.timeout(
+    (options.confirmOptions.confirmationTimeout ?? DEFAULT_CONFIRMATION_TIMEOT) * 1000,
+  )
+
+  const { value } = await connection.confirmTransaction(
+    {
+      signature,
+      lastValidBlockHeight,
+      blockhash,
+      minContextSlot: slot,
+      abortSignal: signal,
+    },
+    options.confirmOptions.commitment,
+  )
+
+  if (value.err) {
+    throw new Error(ConfirmTransactionErrorReason.ConfirmationFailed)
+  }
+}
+
+const getConfirmTransactionErrorFromString = (errorName: string) => {
+  return (
+    Object.values(ConfirmTransactionErrorReason).find((error) => error === errorName) ??
+    ConfirmTransactionErrorReason.ConfirmationFailed
   )
 }
