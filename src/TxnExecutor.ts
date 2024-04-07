@@ -108,6 +108,7 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
           transactions,
           walletAndConnection,
           options,
+          blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
           slot: context.slot,
         })
 

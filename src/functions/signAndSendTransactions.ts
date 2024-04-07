@@ -1,11 +1,12 @@
 import { ExecutorOptions, WalletAndConnection } from '../types'
 import { sendTransactions } from './sendTransactions'
-import { VersionedTransaction } from '@solana/web3.js'
+import { BlockhashWithExpiryBlockHeight, VersionedTransaction } from '@solana/web3.js'
 
 export type SignAndSendTransactionsProps = {
   transactions: VersionedTransaction[]
   walletAndConnection: WalletAndConnection
   options: ExecutorOptions
+  blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
   slot: number
 }
 
@@ -13,6 +14,7 @@ export const signAndSendTransactions = async ({
   transactions,
   walletAndConnection,
   options,
+  blockhashWithExpiryBlockHeight,
   slot,
 }: SignAndSendTransactionsProps): Promise<string[]> => {
   const { connection, wallet } = walletAndConnection
@@ -26,6 +28,7 @@ export const signAndSendTransactions = async ({
         transactions: [signedTransaction],
         connection: connection,
         options,
+        blockhashWithExpiryBlockHeight,
         slot,
       })
 
@@ -40,6 +43,7 @@ export const signAndSendTransactions = async ({
     transactions: signedTxns,
     connection: connection,
     options,
+    blockhashWithExpiryBlockHeight,
     slot,
   })
 
