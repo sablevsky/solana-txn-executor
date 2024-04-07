@@ -24,15 +24,6 @@ export const sendTransactionBanx: SendTransactionBanx = async ({
   skipPreflight,
 }): Promise<void> => {
   try {
-    // const x = transaction.serialize()
-
-    // const y = VersionedTransaction.deserialize(x)
-
-    // const ixns = transaction.message.getAccountKeys()
-
-    // // eslint-disable-next-line no-console
-    // console.log(ixns)
-
     await axios.post(`${BACKEND_BASE_URL}/activity/tx`, {
       transaction: bs58.encode(transaction.serialize()),
       blockhash,
