@@ -2,7 +2,7 @@
 # Execute Husky hooks
 . "$(dirname -- "$0")/_/husky.sh"
 
-yarn prettier:fix
+yarn format
 
 lint_output=$(yarn eslint . 2>&1)
 
