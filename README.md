@@ -1,3 +1,5 @@
+> IMPORTANT! The documentation is not up to date. We use this toolkit for banx.gg. I'm contributing very active and don't have time to update the documentation. I hope you understand. It's better to look into the code itself. 
+
 # solana-transactions-executor
 > A small solution to operate solana transactions: create, sign, send, chunk, support ledger etc.
 
