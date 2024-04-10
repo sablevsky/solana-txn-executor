@@ -16,7 +16,7 @@
     "prepare": "husky install ./.husky && chmod ug+x .husky/* && chmod ug+x .git/hooks/*"
   },
   "dependencies": {
-    "@solana/web3.js": "^1.68.0",
+    "@solana/web3.js": "1.91.1",
     "axios": "^1.6.8",
     "bs58": "^5.0.0",
     "lodash": "^4.17.21"
