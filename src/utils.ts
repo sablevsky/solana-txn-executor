@@ -18,3 +18,5 @@ export const filterRejectedResultsReasons = <T>(results: PromiseSettledResult<T>
     .map((result) => (result.status === 'rejected' ? result.reason : null))
     .compact()
     .value()
+
+export const wait = (time: number) => new Promise((resolve) => setTimeout(resolve, time))
