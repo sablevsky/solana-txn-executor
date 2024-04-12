@@ -6,6 +6,6 @@ export {
 
 export { createTransaction, TransactionCreationData } from './createTransaction'
 
-export { sendTransactions, SendTransactionsProps } from './sendTransactions'
+export { sendTransactions } from './sendTransactions'
 
-export { signAndSendTransactions, SignAndSendTransactionsProps } from './signAndSendTransactions'
+export { signAndSendTransactions } from './signAndSendTransactions'
