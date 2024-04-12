@@ -32,7 +32,7 @@ export const confirmTransactionByPollingSignatureStatus: ConfirmTransactionByPol
         }
       }
     } catch (error) {
-      throw new ConfirmTransactionError('Unable to determine transaction status')
+      throw new ConfirmTransactionError('ConfirmTransactionError')
     }
   }
 
@@ -67,7 +67,7 @@ export const confirmTransactionBlockheightBased: СonfirmTransactionBlockheightB
     if (value.err instanceof Error) {
       throw value.err
     }
-    throw new ConfirmTransactionError('Unable to determine transaction status')
+    throw new ConfirmTransactionError('ConfirmTransactionError')
   }
 
   return signature
@@ -114,7 +114,7 @@ export const confirmTransactionWithPollingFallback: ConfirmTransactionWithPollin
     : confirmTransactionBlockheightBasedPromise
 
   if (!res) {
-    throw new ConfirmTransactionError('Unable to determine transaction status')
+    throw new ConfirmTransactionError('ConfirmTransactionError')
   }
 
   return res
