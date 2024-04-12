@@ -67,13 +67,6 @@ export type ExecutorOptions = {
    */
   abortOnFirstError: boolean
   /**
-   * If the value exists, the transactions in chunk will be sent sequentially with the specified delay
-   * If no value is passed, the transactions in chunk will be sent via Promise.all
-   * Allowed values: [0, +Infinity)
-   * Default value: undefined
-   */
-  sequentialSendingDelay: number | undefined
-  /**
    * Parameters for debug
    */
   debug: {

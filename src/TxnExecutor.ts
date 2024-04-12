@@ -22,7 +22,6 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
   },
   signAllChunkSize: 10,
   abortOnFirstError: false,
-  sequentialSendingDelay: undefined,
   debug: {
     preventSending: undefined,
   },
@@ -79,7 +78,10 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
       confirmed: [],
       failed: [],
     }
+
     for (const chunk of txnsDataChunks) {
+      const resendAbortControllerBySignature = new Map<string, AbortController | undefined>()
+
       try {
         const transactionCreationData = await Promise.all(
           chunk.map((params) => createTransactionDataFn(params, { ...walletAndConnection })),
@@ -104,20 +106,24 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
 
         eventHandlers?.beforeChunkApprove?.()
 
-        const signatures = await signAndSendTransactions({
+        const signaturesAndAbortControllers = await signAndSendTransactions({
           transactions,
           walletAndConnection,
           options,
-          blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
           slot: context.slot,
+          resendInterval: 1,
         })
 
-        const results: SentTransactionsResult<TransactionResult> = signatures.map(
-          (signature, idx) => ({
+        //? setAbortControllerMap
+        signaturesAndAbortControllers.forEach(({ signature, resendAbortController }) =>
+          resendAbortControllerBySignature.set(signature, resendAbortController),
+        )
+
+        const results: SentTransactionsResult<TransactionResult> =
+          signaturesAndAbortControllers.map(({ signature }, idx) => ({
             signature,
             result: transactionCreationData?.[idx]?.result,
-          }),
-        )
+          }))
         signAndSendTxnsResults.push(...results)
 
         eventHandlers?.chunkSent?.(results)
@@ -125,53 +131,68 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
         //? Track the confirmation of transactions in chunks only if specific handlers exist
         if (eventHandlers.confirmedAll || eventHandlers.chunkConfirmed) {
           confirmTransactions({
-            signatures,
+            signatures: signaturesAndAbortControllers.map(({ signature }) => signature),
             blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
             connection: walletAndConnection.connection,
             options,
-            slot: context.slot,
-          }).then(({ confirmed: confirmedSignatures, failed: confirmationFailedResults }) => {
-            const confirmedResults = results.filter(({ signature }) =>
-              confirmedSignatures.includes(signature),
-            )
-            confirmedTxnsResults.confirmed.push(...confirmedResults)
+          })
+            .then(({ confirmed: confirmedSignatures, failed: confirmationFailedResults }) => {
+              const confirmedResults = results.filter(({ signature }) =>
+                confirmedSignatures.includes(signature),
+              )
+              confirmedTxnsResults.confirmed.push(...confirmedResults)
 
-            const failedResults = chain(confirmationFailedResults)
-              .map(({ reason, signature }) => {
-                const result = results.find(
-                  ({ signature: resSignature }) => signature === resSignature,
-                )
-                if (!result) return null
-                return {
-                  reason,
-                  signature: result.signature,
-                  result: result.result,
-                }
-              })
-              .compact()
-              .value()
+              const failedResults = chain(confirmationFailedResults)
+                .map(({ reason, signature }) => {
+                  const result = results.find(
+                    ({ signature: resSignature }) => signature === resSignature,
+                  )
+                  if (!result) return null
+                  return {
+                    reason,
+                    signature: result.signature,
+                    result: result.result,
+                  }
+                })
+                .compact()
+                .value()
 
-            confirmedTxnsResults.failed.push(...failedResults)
+              confirmedTxnsResults.failed.push(...failedResults)
 
-            eventHandlers?.chunkConfirmed?.({
-              confirmed: confirmedResults,
-              failed: confirmationFailedResults,
-            })
-
-            if (
-              confirmedTxnsResults.confirmed.length + confirmedTxnsResults.failed.length ===
-              txnsParams.length
-            ) {
-              eventHandlers?.confirmedAll?.({
+              eventHandlers?.chunkConfirmed?.({
                 confirmed: confirmedResults,
                 failed: confirmationFailedResults,
               })
-            }
-          })
+
+              if (
+                confirmedTxnsResults.confirmed.length + confirmedTxnsResults.failed.length ===
+                txnsParams.length
+              ) {
+                eventHandlers?.confirmedAll?.({
+                  confirmed: confirmedResults,
+                  failed: confirmationFailedResults,
+                })
+              }
+            })
+            .finally(() => {
+              //TODO Abort after confirm/reject on each txn immediately
+              //? Abort each resend
+              resendAbortControllerBySignature.forEach((abortController) => {
+                if (!abortController?.signal.aborted) {
+                  abortController?.abort()
+                }
+              })
+            })
         }
       } catch (error) {
         eventHandlers?.error?.(error as TxnError)
         const userRejectedTxn = didUserRejectTxnSigning(error as TxnError)
+        //? If chunk error -- abort each resend
+        resendAbortControllerBySignature.forEach((abortController) => {
+          if (!abortController?.signal.aborted) {
+            abortController?.abort()
+          }
+        })
         if (userRejectedTxn) break
         if (!userRejectedTxn && options.abortOnFirstError) break
       }

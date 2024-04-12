@@ -1,117 +1,73 @@
+import { sendTransactionWithResendInterval } from '../base'
 import { ExecutorOptions } from '../types'
-import { sendTransactionBanx } from './sendTransactionBanx'
-import { BlockhashWithExpiryBlockHeight, Connection, VersionedTransaction } from '@solana/web3.js'
+// import { sendTransactionBanx } from './sendTransactionBanx'
+import { Connection, VersionedTransaction } from '@solana/web3.js'
 import { uniqueId } from 'lodash'
 
-export type SendTransactionsProps = {
+export type SendTransactions = (params: {
   transactions: VersionedTransaction[]
   connection: Connection
   options: ExecutorOptions
-  blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
   slot: number
-}
+  resendInterval?: number
+}) => Promise<{ signature: string; resendAbortController?: AbortController }[]>
 
-export const sendTransactions = async ({
+export const sendTransactions: SendTransactions = async ({
   transactions,
   connection,
   options,
-  blockhashWithExpiryBlockHeight,
   slot,
-}: SendTransactionsProps) => {
-  if (options.debug.preventSending) {
-    return await sendTransactionsMock({
-      transactions,
-      connection,
-      options,
-      blockhashWithExpiryBlockHeight,
-      slot,
-    })
-  }
-
-  if (options.sequentialSendingDelay) {
-    return await sendTransactionsSequential({
-      transactions,
-      connection,
-      options,
-      blockhashWithExpiryBlockHeight,
-      slot,
-    })
-  }
-
-  return await sendTransactionsParallel({
+  resendInterval,
+}) => {
+  return await (options.debug.preventSending ? sendTransactionsMock : sendTransactionsParallel)({
     transactions,
     connection,
     options,
-    blockhashWithExpiryBlockHeight,
     slot,
+    resendInterval,
   })
 }
 
-const sendTransactionsSequential = async ({
+const sendTransactionsParallel: SendTransactions = async ({
   transactions,
   connection,
   options,
-  blockhashWithExpiryBlockHeight,
   slot,
-}: SendTransactionsProps) => {
-  const signatures: string[] = []
-
-  for (let i = 0; i < transactions.length; ++i) {
-    sendTransactionBanx({
-      transaction: transactions[i],
-      blockhash: blockhashWithExpiryBlockHeight.blockhash,
-      lastValidBlockHeight: blockhashWithExpiryBlockHeight.lastValidBlockHeight,
-      preflightCommitment: options.confirmOptions.preflightCommitment,
-      minContextSlot: slot,
-      skipPreflight: options.confirmOptions.skipPreflight,
-      commitment: options.confirmOptions.commitment,
-    })
-    const hash = await connection.sendTransaction(transactions[i], {
-      skipPreflight: options.confirmOptions.skipPreflight,
-      preflightCommitment: options.confirmOptions.preflightCommitment,
-      maxRetries: options.confirmOptions.maxRetries,
-      minContextSlot: slot,
-    })
-
-    signatures.push(hash)
-
-    await new Promise((resolve) => setTimeout(resolve, options.sequentialSendingDelay))
-  }
-
-  return signatures
-}
-
-const sendTransactionsParallel = async ({
-  transactions,
-  connection,
-  options,
-  blockhashWithExpiryBlockHeight,
-  slot,
-}: SendTransactionsProps) => {
-  const signatures = await Promise.all(
+  resendInterval,
+}) => {
+  const signaturesAndAbortContollers = await Promise.all(
     transactions.map(async (txn) => {
-      sendTransactionBanx({
-        transaction: txn,
-        blockhash: blockhashWithExpiryBlockHeight.blockhash,
-        lastValidBlockHeight: blockhashWithExpiryBlockHeight.lastValidBlockHeight,
-        preflightCommitment: options.confirmOptions.preflightCommitment,
-        minContextSlot: slot,
-        skipPreflight: options.confirmOptions.skipPreflight,
-        commitment: options.confirmOptions.commitment,
-      })
+      // sendTransactionBanx({
+      //   transaction: txn,
+      //   blockhash: blockhashWithExpiryBlockHeight.blockhash,
+      //   lastValidBlockHeight: blockhashWithExpiryBlockHeight.lastValidBlockHeight,
+      //   preflightCommitment: options.confirmOptions.preflightCommitment,
+      //   minContextSlot: slot,
+      //   skipPreflight: options.confirmOptions.skipPreflight,
+      //   commitment: options.confirmOptions.commitment,
+      // })
 
-      return await connection.sendTransaction(txn, {
-        skipPreflight: options.confirmOptions.skipPreflight,
-        preflightCommitment: options.confirmOptions.preflightCommitment,
-        maxRetries: options.confirmOptions.maxRetries,
-        minContextSlot: slot,
+      return await sendTransactionWithResendInterval({
+        transaction: txn,
+        connection,
+        resendInterval, //TODO Add resendInterva
+        sendOptions: {
+          maxRetries: options.confirmOptions.maxRetries,
+          minContextSlot: slot,
+          preflightCommitment: options.confirmOptions.preflightCommitment,
+          skipPreflight: options.confirmOptions.skipPreflight,
+        },
       })
     }),
   )
-  return signatures
+  return signaturesAndAbortContollers
 }
 
-const sendTransactionsMock = async ({ transactions }: SendTransactionsProps) => {
-  const signatures = transactions.map(() => uniqueId('mockTxnSignature_'))
-  return await Promise.resolve(signatures)
+const sendTransactionsMock: SendTransactions = async ({ transactions }) => {
+  return await Promise.resolve(
+    transactions.map(() => ({
+      signature: uniqueId('mockTxnSignature_'),
+      resendAbortController: new AbortController(),
+    })),
+  )
 }

@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIRMATION_TIMEOT } from '../constants'
+import { confirmTransaction } from '../base'
 import {
   BlockhashWithExpiryBlockHeight,
   ConfirmTransactionErrorReason,
@@ -11,7 +11,6 @@ export type ConfirmTransactionsProps = {
   connection: Connection
   blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
   options: ExecutorOptions
-  slot: number
 }
 
 export type ConfirmTransactionsResult = {
@@ -24,19 +23,21 @@ export const confirmTransactions = async ({
   connection,
   blockhashWithExpiryBlockHeight,
   options,
-  slot,
 }: ConfirmTransactionsProps) => {
   const results = await Promise.allSettled(
-    signatures.map(
-      async (signature) =>
-        await confirmTransaction({
-          signature,
-          connection,
-          blockhashWithExpiryBlockHeight,
-          options,
-          slot,
-        }),
-    ),
+    signatures.map(async (signature) => {
+      const abortConfirmationController = new AbortController()
+
+      await confirmSingleTransaction({
+        signature,
+        connection,
+        blockhashWithExpiryBlockHeight,
+        options,
+        abortConfirmationController,
+      }).finally(() => {
+        abortConfirmationController.abort()
+      })
+    }),
   )
 
   return results.reduce(
@@ -66,40 +67,41 @@ export const confirmTransactions = async ({
   )
 }
 
-export type ConfirmTransactionProps = {
+type ConfirmTransactionProps = {
   signature: string
   connection: Connection
   blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
   options: ExecutorOptions
-  slot: number
+  abortConfirmationController: AbortController
 }
-const confirmTransaction = async ({
+const confirmSingleTransaction = async ({
   signature,
   connection,
   blockhashWithExpiryBlockHeight,
   options,
-  slot,
+  abortConfirmationController,
 }: ConfirmTransactionProps) => {
-  const { blockhash, lastValidBlockHeight } = blockhashWithExpiryBlockHeight
+  setTimeout(() => {
+    //? Abort in 60 seconds
+    // eslint-disable-next-line no-console, no-undef
+    console.log('set timeout trigger', abortConfirmationController)
+    if (!abortConfirmationController.signal.aborted) {
+      abortConfirmationController.abort()
+      // eslint-disable-next-line no-console, no-undef
+      console.log('set timeout trigger inside if WTF', abortConfirmationController)
+      //TODO: Add timeout error here
+      throw new Error('Timeout')
+    }
+  }, 60 * 1000)
 
-  const signal = AbortSignal.timeout(
-    (options.confirmOptions.confirmationTimeout ?? DEFAULT_CONFIRMATION_TIMEOT) * 1000,
-  )
-
-  const { value } = await connection.confirmTransaction(
-    {
-      signature,
-      lastValidBlockHeight,
-      blockhash,
-      minContextSlot: slot,
-      abortSignal: signal,
-    },
-    options.confirmOptions.commitment,
-  )
-
-  if (value.err) {
-    throw new Error(ConfirmTransactionErrorReason.ConfirmationFailed)
-  }
+  await confirmTransaction({
+    signature,
+    connection,
+    pollingSignatureInterval: 4,
+    abortSignal: abortConfirmationController.signal,
+    commitment: options.confirmOptions.commitment,
+    blockhashWithExpiryBlockHeight,
+  })
 }
 
 const getConfirmTransactionErrorFromString = (errorName: string) => {

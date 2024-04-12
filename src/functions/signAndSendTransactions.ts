@@ -1,51 +1,51 @@
 import { ExecutorOptions, WalletAndConnection } from '../types'
 import { sendTransactions } from './sendTransactions'
-import { BlockhashWithExpiryBlockHeight, VersionedTransaction } from '@solana/web3.js'
+import { VersionedTransaction } from '@solana/web3.js'
 
-export type SignAndSendTransactionsProps = {
+export type SignAndSendTransactions = (params: {
   transactions: VersionedTransaction[]
   walletAndConnection: WalletAndConnection
   options: ExecutorOptions
-  blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
   slot: number
-}
+  resendInterval?: number
+}) => Promise<{ signature: string; resendAbortController?: AbortController }[]>
 
-export const signAndSendTransactions = async ({
+export const signAndSendTransactions: SignAndSendTransactions = async ({
   transactions,
   walletAndConnection,
   options,
-  blockhashWithExpiryBlockHeight,
   slot,
-}: SignAndSendTransactionsProps): Promise<string[]> => {
+  resendInterval,
+}) => {
   const { connection, wallet } = walletAndConnection
 
   if (!wallet.signAllTransactions || options.signAllChunkSize === 1) {
-    const signatures: string[] = []
+    const signaturesAndAbortControllers = []
 
     for (let i = 0; i < transactions.length; ++i) {
       const signedTransaction = await wallet.signTransaction(transactions[i])
-      const [signature] = await sendTransactions({
+      const [signatureAndResendAbortController] = await sendTransactions({
         transactions: [signedTransaction],
         connection: connection,
         options,
-        blockhashWithExpiryBlockHeight,
         slot,
+        resendInterval,
       })
 
-      signatures.push(signature)
+      signaturesAndAbortControllers.push(signatureAndResendAbortController)
     }
 
-    return signatures
+    return signaturesAndAbortControllers
   }
 
   const signedTxns = await wallet.signAllTransactions(transactions)
-  const signatures = await sendTransactions({
+  const signatureAndResendAbortController = await sendTransactions({
     transactions: signedTxns,
     connection: connection,
     options,
-    blockhashWithExpiryBlockHeight,
     slot,
+    resendInterval,
   })
 
-  return signatures
+  return signatureAndResendAbortController
 }
