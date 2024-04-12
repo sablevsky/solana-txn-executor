@@ -89,8 +89,6 @@ export const confirmTransactionWithPollingFallback: ConfirmTransactionWithPollin
   commitment,
   pollingSignatureInterval,
 }) => {
-  // lastValidBlockHeight: blockhashWithExpiryBlockHeight.lastValidBlockHeight - 150, //TODO Why?
-
   const confirmTransactionBlockheightBasedPromise = confirmTransactionBlockheightBased({
     signature,
     abortSignal,
