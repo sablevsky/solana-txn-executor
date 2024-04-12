@@ -1,10 +1,10 @@
 import { confirmTransactionWithPollingFallback } from '../../base'
+import { wait } from '../../utils'
 import {
   BlockhashWithExpiryBlockHeight,
   ConfirmTransactionErrorReason,
   ExecutorOptionsBase,
 } from '../types'
-import { TimeoutError } from './errors'
 import { Connection } from '@solana/web3.js'
 
 export type ConfirmTransactionsProps = {
@@ -30,18 +30,19 @@ export const confirmTransactions = async ({
   const results = await Promise.allSettled(
     signatures.map(async (signature) => {
       const abortConfirmationController = new AbortController()
-
-      await confirmSingleTransaction({
-        signature,
-        connection,
-        blockhashWithExpiryBlockHeight,
-        options,
-        abortConfirmationController,
-      }).finally(() => {
+      try {
+        await confirmSingleTransaction({
+          signature,
+          connection,
+          blockhashWithExpiryBlockHeight,
+          options,
+          abortConfirmationController,
+        })
+      } finally {
         const resendTransactionAbortController = resendAbortControllerBySignature?.get(signature)
         resendTransactionAbortController?.abort()
         abortConfirmationController.abort()
-      })
+      }
     }),
   )
 
@@ -88,16 +89,17 @@ const confirmSingleTransaction = async ({
 }: ConfirmTransactionProps) => {
   const { confirmationTimeout, commitment, pollingSignatureInterval } = options.confirmOptions
 
-  if (confirmationTimeout) {
-    setTimeout(() => {
-      if (!abortConfirmationController.signal.aborted) {
-        abortConfirmationController.abort()
-        throw new TimeoutError('ConfirmTransactionTimeout')
-      }
-    }, confirmationTimeout * 1000)
+  //? Use promise because setTimeout are executed in the main loop, outside the body of code that originated them.
+  //? It is impossible to handle an error using setTimeout
+  const abortOnTimeout = async (timeout: number) => {
+    await wait(timeout * 1000)
+    if (!abortConfirmationController.signal.aborted) {
+      abortConfirmationController.abort()
+      throw new Error(ConfirmTransactionErrorReason.TimeoutError)
+    }
   }
 
-  await confirmTransactionWithPollingFallback({
+  const confirmTransactionPromise = confirmTransactionWithPollingFallback({
     signature,
     connection,
     pollingSignatureInterval,
@@ -105,14 +107,16 @@ const confirmSingleTransaction = async ({
     commitment,
     blockhashWithExpiryBlockHeight,
   })
+
+  await (confirmationTimeout
+    ? Promise.race([confirmTransactionPromise, abortOnTimeout(confirmationTimeout)])
+    : confirmTransactionPromise)
 }
 
 const getConfirmationErrorReason = (reason: Error) => {
-  if (reason instanceof TimeoutError) return ConfirmTransactionErrorReason.TimeoutError
-
-  const errorName = reason.name
+  const message = reason.message
   return (
-    Object.values(ConfirmTransactionErrorReason).find((error) => error === errorName) ??
+    Object.values(ConfirmTransactionErrorReason).find((error) => error === message) ??
     ConfirmTransactionErrorReason.ConfirmationFailed
   )
 }
