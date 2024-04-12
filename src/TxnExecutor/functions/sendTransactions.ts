@@ -1,5 +1,5 @@
 import { sendTransactionWithResendInterval } from '../../base'
-import { ExecutorOptions } from '../types'
+import { ExecutorOptionsBase } from '../types'
 import { TimeoutError } from './errors'
 import { Connection, SendOptions, VersionedTransaction } from '@solana/web3.js'
 import { uniqueId } from 'lodash'
@@ -8,7 +8,7 @@ export type SendTransactions = (params: {
   transactions: VersionedTransaction[]
   connection: Connection
   minContextSlot: number
-  options: ExecutorOptions
+  options: ExecutorOptionsBase
 }) => Promise<{ signature: string; resendAbortController?: AbortController }[]>
 
 export const sendTransactions: SendTransactions = async ({

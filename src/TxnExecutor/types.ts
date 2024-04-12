@@ -36,7 +36,7 @@ export type CreateTransactionDataFn<CreateTransactionFnParams, TransactionResult
   walletAndConnection: WalletAndConnection,
 ) => Promise<TransactionCreationData<TransactionResult>>
 
-export type ExecutorOptions = {
+export type ExecutorOptionsBase = {
   /**
    * Options for sending transactions
    */
