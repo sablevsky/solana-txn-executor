@@ -86,6 +86,8 @@ export type ExecutorOptionsBase = {
   }
 }
 
+export type ExecutorOptions = Partial<ExecutorOptionsBase>
+
 type SentTransactionResult<TransactionResult> = {
   signature: string
   result?: TransactionResult

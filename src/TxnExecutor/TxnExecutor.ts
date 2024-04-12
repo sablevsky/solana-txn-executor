@@ -4,6 +4,7 @@ import {
   ConfirmedTransactionsResult,
   CreateTransactionDataFn,
   EventHanlders,
+  ExecutorOptions,
   ExecutorOptionsBase,
   SentTransactionsResult,
   TxnError,
@@ -44,7 +45,7 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
   constructor(
     createTransactionDataFn: CreateTransactionDataFn<CreateTransactionFnParams, TransactionResult>,
     walletAndConnection: WalletAndConnection,
-    options?: Partial<ExecutorOptionsBase>,
+    options?: ExecutorOptions,
   ) {
     this.createTransactionDataFn = createTransactionDataFn
     this.walletAndConnection = walletAndConnection
