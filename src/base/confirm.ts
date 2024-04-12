@@ -6,23 +6,25 @@ export class ConfirmTransactionError extends Error {
     super(message)
   }
 }
-
+/**
+ * Throws ConfirmTransactionError if something goes wrong
+ */
 type ConfirmTransactionByPollingSignatureStatus = (params: {
   signature: string
   connection: Connection
-  abortSignal: AbortSignal
   commitment?: Commitment
-  /* Polling interval in seconds */
+  /* abortSignal is required because it is the only way to stop the loop if there were no errors  */
+  abortSignal: AbortSignal
+  /**
+   * Polling interval in seconds
+   * Default value is 2
+   */
   refetchInterval?: number
 }) => Promise<string | undefined>
 export const confirmTransactionByPollingSignatureStatus: ConfirmTransactionByPollingSignatureStatus =
   async ({ signature, connection, abortSignal, commitment = 'confirmed', refetchInterval = 2 }) => {
-    // eslint-disable-next-line no-console, no-undef
-    console.log('start confirmation by polling', abortSignal)
     try {
       while (!abortSignal.aborted) {
-        // eslint-disable-next-line no-console, no-undef
-        console.log('confirmation by polling iteration', abortSignal)
         await wait(refetchInterval * 1000)
         const { value: signatureValue } = await connection.getSignatureStatus(signature, {
           searchTransactionHistory: false,
@@ -32,17 +34,18 @@ export const confirmTransactionByPollingSignatureStatus: ConfirmTransactionByPol
         }
       }
     } catch (error) {
-      // eslint-disable-next-line no-console, no-undef
-      console.log('confirmation by polling throw error WTF')
       throw new ConfirmTransactionError('Unable to determine transaction status')
     }
   }
 
+/**
+ * Throws ConfirmTransactionError|TransactionExpiredBlockheightExceededError|TransactionExpiredTimeoutError if something goes wrong
+ */
 type СonfirmTransactionBlockheightBased = (params: {
   signature: string
   connection: Connection
   blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
-  abortSignal: AbortSignal
+  abortSignal?: AbortSignal
   commitment?: Commitment
 }) => Promise<string>
 export const confirmTransactionBlockheightBased: СonfirmTransactionBlockheightBased = async ({
@@ -63,7 +66,10 @@ export const confirmTransactionBlockheightBased: СonfirmTransactionBlockheightB
   )
 
   if (value.err) {
-    throw value.err
+    if (value.err instanceof Error) {
+      throw value.err
+    }
+    throw new ConfirmTransactionError('Unable to determine transaction status')
   }
 
   return signature
@@ -105,7 +111,7 @@ export const confirmTransaction: ConfirmTransaction = async ({
   ])
 
   if (!res) {
-    throw new ConfirmTransactionError('Unable to confirm transaction')
+    throw new ConfirmTransactionError('Unable to determine transaction status')
   }
 
   return res
