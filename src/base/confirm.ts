@@ -1,12 +1,9 @@
 import { wait } from '../utils'
+import { ConfirmTransactionError } from './types'
 import { BlockhashWithExpiryBlockHeight, Commitment, Connection } from '@solana/web3.js'
 
-export class ConfirmTransactionError extends Error {
-  constructor(message: string) {
-    super(message)
-  }
-}
 /**
+ * Can be used as fallback when websocket died (in connection.confirmTransaction) or RPC doen't support websockets at all
  * Throws ConfirmTransactionError if something goes wrong
  */
 type ConfirmTransactionByPollingSignatureStatus = (params: {
@@ -17,9 +14,8 @@ type ConfirmTransactionByPollingSignatureStatus = (params: {
   abortSignal: AbortSignal
   /**
    * Polling interval in seconds
-   * Default value is 2
    */
-  refetchInterval?: number
+  refetchInterval: number
 }) => Promise<string | undefined>
 export const confirmTransactionByPollingSignatureStatus: ConfirmTransactionByPollingSignatureStatus =
   async ({ signature, connection, abortSignal, commitment = 'confirmed', refetchInterval = 2 }) => {
@@ -75,7 +71,7 @@ export const confirmTransactionBlockheightBased: СonfirmTransactionBlockheightB
   return signature
 }
 
-type ConfirmTransaction = (params: {
+type ConfirmTransactionWithPollingFallback = (params: {
   signature: string
   connection: Connection
   blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
@@ -83,7 +79,7 @@ type ConfirmTransaction = (params: {
   commitment?: Commitment
   pollingSignatureInterval?: number
 }) => Promise<string>
-export const confirmTransaction: ConfirmTransaction = async ({
+export const confirmTransactionWithPollingFallback: ConfirmTransactionWithPollingFallback = async ({
   signature,
   connection,
   blockhashWithExpiryBlockHeight,
@@ -91,24 +87,29 @@ export const confirmTransaction: ConfirmTransaction = async ({
   commitment,
   pollingSignatureInterval,
 }) => {
-  const res = await Promise.race([
-    confirmTransactionBlockheightBased({
-      signature,
-      abortSignal,
-      blockhashWithExpiryBlockHeight,
-      connection,
-      commitment,
-      // lastValidBlockHeight: blockhashWithExpiryBlockHeight.lastValidBlockHeight - 150, //TODO Why?
-    }),
-    //? in case when web-socket died
-    confirmTransactionByPollingSignatureStatus({
-      signature,
-      connection,
-      abortSignal,
-      commitment: commitment,
-      refetchInterval: pollingSignatureInterval,
-    }),
-  ])
+  // lastValidBlockHeight: blockhashWithExpiryBlockHeight.lastValidBlockHeight - 150, //TODO Why?
+
+  const confirmTransactionBlockheightBasedPromise = confirmTransactionBlockheightBased({
+    signature,
+    abortSignal,
+    blockhashWithExpiryBlockHeight,
+    connection,
+    commitment,
+  })
+
+  //? Prevent using confirmTransactionByPollingSignatureStatus if pollingSignatureInterval is undefined
+  const res = pollingSignatureInterval
+    ? await Promise.race([
+        confirmTransactionBlockheightBasedPromise,
+        confirmTransactionByPollingSignatureStatus({
+          signature,
+          connection,
+          abortSignal,
+          commitment: commitment,
+          refetchInterval: pollingSignatureInterval,
+        }),
+      ])
+    : confirmTransactionBlockheightBasedPromise
 
   if (!res) {
     throw new ConfirmTransactionError('Unable to determine transaction status')
