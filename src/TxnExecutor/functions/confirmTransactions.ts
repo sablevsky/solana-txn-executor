@@ -2,7 +2,7 @@ import { confirmTransactionWithPollingFallback } from '../../base'
 import {
   BlockhashWithExpiryBlockHeight,
   ConfirmTransactionErrorReason,
-  ExecutorOptions,
+  ExecutorOptionsBase,
 } from '../types'
 import { TimeoutError } from './errors'
 import { Connection } from '@solana/web3.js'
@@ -12,7 +12,7 @@ export type ConfirmTransactionsProps = {
   resendAbortControllerBySignature: Map<string, AbortController | undefined>
   connection: Connection
   blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
-  options: ExecutorOptions
+  options: ExecutorOptionsBase
 }
 
 export type ConfirmTransactionsResult = {
@@ -76,7 +76,7 @@ type ConfirmTransactionProps = {
   signature: string
   connection: Connection
   blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
-  options: ExecutorOptions
+  options: ExecutorOptionsBase
   abortConfirmationController: AbortController
 }
 const confirmSingleTransaction = async ({

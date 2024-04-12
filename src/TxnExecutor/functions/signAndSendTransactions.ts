@@ -1,4 +1,4 @@
-import { ExecutorOptions, WalletAndConnection } from '../types'
+import { ExecutorOptionsBase, WalletAndConnection } from '../types'
 import { sendTransactions } from './sendTransactions'
 import { VersionedTransaction } from '@solana/web3.js'
 
@@ -6,7 +6,7 @@ export type SignAndSendTransactions = (params: {
   transactions: VersionedTransaction[]
   walletAndConnection: WalletAndConnection
   minContextSlot: number
-  options: ExecutorOptions
+  options: ExecutorOptionsBase
 }) => Promise<{ signature: string; resendAbortController?: AbortController }[]>
 
 export const signAndSendTransactions: SignAndSendTransactions = async ({

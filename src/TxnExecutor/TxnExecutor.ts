@@ -4,7 +4,7 @@ import {
   ConfirmedTransactionsResult,
   CreateTransactionDataFn,
   EventHanlders,
-  ExecutorOptions,
+  ExecutorOptionsBase,
   SentTransactionsResult,
   TxnError,
   WalletAndConnection,
@@ -12,7 +12,7 @@ import {
 import { didUserRejectTxnSigning } from './utils'
 import { chain, chunk, merge } from 'lodash'
 
-export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
+export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptionsBase = {
   confirmOptions: {
     commitment: undefined,
     confirmationTimeout: DEFAULT_CONFIRMATION_TIMEOUT,
@@ -38,13 +38,13 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
     TransactionResult
   >
   private txnsParams: ReadonlyArray<CreateTransactionFnParams> = []
-  private options: ExecutorOptions = DEFAULT_EXECUTOR_OPTIONS
+  private options: ExecutorOptionsBase = DEFAULT_EXECUTOR_OPTIONS
   private walletAndConnection: WalletAndConnection
   private eventHandlers: EventHanlders<TransactionResult> = {}
   constructor(
     createTransactionDataFn: CreateTransactionDataFn<CreateTransactionFnParams, TransactionResult>,
     walletAndConnection: WalletAndConnection,
-    options?: Partial<ExecutorOptions>,
+    options?: Partial<ExecutorOptionsBase>,
   ) {
     this.createTransactionDataFn = createTransactionDataFn
     this.walletAndConnection = walletAndConnection
