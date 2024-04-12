@@ -1,13 +1,15 @@
-import { confirmTransaction } from '../base'
+import { confirmTransactionWithPollingFallback } from '../../base'
 import {
   BlockhashWithExpiryBlockHeight,
   ConfirmTransactionErrorReason,
   ExecutorOptions,
 } from '../types'
+import { TimeoutError } from './errors'
 import { Connection } from '@solana/web3.js'
 
 export type ConfirmTransactionsProps = {
   signatures: string[]
+  resendAbortControllerBySignature: Map<string, AbortController | undefined>
   connection: Connection
   blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
   options: ExecutorOptions
@@ -20,6 +22,7 @@ export type ConfirmTransactionsResult = {
 
 export const confirmTransactions = async ({
   signatures,
+  resendAbortControllerBySignature,
   connection,
   blockhashWithExpiryBlockHeight,
   options,
@@ -35,6 +38,8 @@ export const confirmTransactions = async ({
         options,
         abortConfirmationController,
       }).finally(() => {
+        const resendTransactionAbortController = resendAbortControllerBySignature?.get(signature)
+        resendTransactionAbortController?.abort()
         abortConfirmationController.abort()
       })
     }),
@@ -48,7 +53,7 @@ export const confirmTransactions = async ({
         const { reason } = result
 
         if (reason instanceof Error) {
-          const errorName = getConfirmTransactionErrorFromString(reason.name)
+          const errorName = getConfirmationErrorReason(reason)
           acc.failed.push({ signature, reason: errorName })
         } else {
           acc.failed.push({ signature, reason: ConfirmTransactionErrorReason.ConfirmationFailed })
@@ -81,30 +86,31 @@ const confirmSingleTransaction = async ({
   options,
   abortConfirmationController,
 }: ConfirmTransactionProps) => {
-  setTimeout(() => {
-    //? Abort in 60 seconds
-    // eslint-disable-next-line no-console, no-undef
-    console.log('set timeout trigger', abortConfirmationController)
-    if (!abortConfirmationController.signal.aborted) {
-      abortConfirmationController.abort()
-      // eslint-disable-next-line no-console, no-undef
-      console.log('set timeout trigger inside if WTF', abortConfirmationController)
-      //TODO: Add timeout error here
-      throw new Error('Timeout')
-    }
-  }, 60 * 1000)
+  const { confirmationTimeout, commitment, pollingSignatureInterval } = options.confirmOptions
 
-  await confirmTransaction({
+  if (confirmationTimeout) {
+    setTimeout(() => {
+      if (!abortConfirmationController.signal.aborted) {
+        abortConfirmationController.abort()
+        throw new TimeoutError('ConfirmTransactionTimeout')
+      }
+    }, confirmationTimeout * 1000)
+  }
+
+  await confirmTransactionWithPollingFallback({
     signature,
     connection,
-    pollingSignatureInterval: 4,
+    pollingSignatureInterval,
     abortSignal: abortConfirmationController.signal,
-    commitment: options.confirmOptions.commitment,
+    commitment,
     blockhashWithExpiryBlockHeight,
   })
 }
 
-const getConfirmTransactionErrorFromString = (errorName: string) => {
+const getConfirmationErrorReason = (reason: Error) => {
+  if (reason instanceof TimeoutError) return ConfirmTransactionErrorReason.TimeoutError
+
+  const errorName = reason.name
   return (
     Object.values(ConfirmTransactionErrorReason).find((error) => error === errorName) ??
     ConfirmTransactionErrorReason.ConfirmationFailed

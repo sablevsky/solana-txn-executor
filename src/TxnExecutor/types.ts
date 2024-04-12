@@ -39,19 +39,26 @@ export type CreateTransactionDataFn<CreateTransactionFnParams, TransactionResult
 export type ExecutorOptions = {
   /**
    * Options for sending transactions
-   * Default value: { skipPreflight: false, commitment: 'confirmed', preflightCommitment: 'processed', maxRetries: undefined, minContextSlot: undefined }
    */
-  confirmOptions: {
+  sendOptions: {
     /** disable transaction verification step */
     skipPreflight?: boolean
-    /** desired commitment level */
-    commitment?: Commitment
     /** preflight commitment level */
     preflightCommitment?: Commitment
     /** Maximum number of times for the RPC node to retry sending the transaction to the leader. */
     maxRetries?: number
+
+    resendTimeout?: number
+    resendInterval?: number
+  }
+
+  confirmOptions: {
+    /** desired commitment level */
+    commitment?: Commitment
     /** Transaction confirmation tracking forced termination timeout */
     confirmationTimeout?: number
+
+    pollingSignatureInterval?: number
   }
   /**
    * Amount of transactions passed to the signAllTransactions function
@@ -75,7 +82,7 @@ export type ExecutorOptions = {
      * F.e. Can be used to test optimistics responses without sending transactions into blockchain
      * Default value: undefined
      */
-    preventSending: boolean | undefined
+    preventSending?: boolean
   }
 }
 

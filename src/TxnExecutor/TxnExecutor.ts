@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIRMATION_TIMEOT } from './constants'
+import { DEFAULT_CONFIRMATION_TIMEOUT } from './constants'
 import { confirmTransactions, createTransaction, signAndSendTransactions } from './functions'
 import {
   ConfirmedTransactionsResult,
@@ -14,11 +14,16 @@ import { chain, chunk, merge } from 'lodash'
 
 export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptions = {
   confirmOptions: {
-    skipPreflight: undefined,
     commitment: undefined,
-    preflightCommitment: undefined,
+    confirmationTimeout: DEFAULT_CONFIRMATION_TIMEOUT,
+    pollingSignatureInterval: undefined,
+  },
+  sendOptions: {
+    skipPreflight: undefined,
     maxRetries: undefined,
-    confirmationTimeout: DEFAULT_CONFIRMATION_TIMEOT,
+    preflightCommitment: undefined,
+    resendInterval: undefined,
+    resendTimeout: undefined,
   },
   signAllChunkSize: 10,
   abortOnFirstError: false,
@@ -67,17 +72,23 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
     return this
   }
 
+  private signAndSendTxnsResults: SentTransactionsResult<TransactionResult> = []
+  private confirmedTxnsResults: ConfirmedTransactionsResult<TransactionResult> = {
+    confirmed: [],
+    failed: [],
+  }
   public async execute() {
-    const { txnsParams, createTransactionDataFn, walletAndConnection, options, eventHandlers } =
-      this
+    const {
+      txnsParams,
+      createTransactionDataFn,
+      walletAndConnection,
+      options,
+      eventHandlers,
+      signAndSendTxnsResults,
+      confirmedTxnsResults,
+    } = this
 
     const txnsDataChunks = chunk(txnsParams, options.signAllChunkSize)
-
-    const signAndSendTxnsResults: SentTransactionsResult<TransactionResult> = []
-    const confirmedTxnsResults: ConfirmedTransactionsResult<TransactionResult> = {
-      confirmed: [],
-      failed: [],
-    }
 
     for (const chunk of txnsDataChunks) {
       const resendAbortControllerBySignature = new Map<string, AbortController | undefined>()
@@ -89,7 +100,7 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
 
         const { value, context } =
           await walletAndConnection.connection.getLatestBlockhashAndContext(
-            options.confirmOptions.preflightCommitment,
+            options.sendOptions.preflightCommitment,
           )
         const { blockhash, lastValidBlockHeight } = value
 
@@ -106,24 +117,24 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
 
         eventHandlers?.beforeChunkApprove?.()
 
-        const signaturesAndAbortControllers = await signAndSendTransactions({
+        const signAndSendTransactionsResults = await signAndSendTransactions({
           transactions,
           walletAndConnection,
           options,
-          slot: context.slot,
-          resendInterval: 1,
+          minContextSlot: context.slot,
         })
 
         //? setAbortControllerMap
-        signaturesAndAbortControllers.forEach(({ signature, resendAbortController }) =>
+        signAndSendTransactionsResults.forEach(({ signature, resendAbortController }) =>
           resendAbortControllerBySignature.set(signature, resendAbortController),
         )
 
-        const results: SentTransactionsResult<TransactionResult> =
-          signaturesAndAbortControllers.map(({ signature }, idx) => ({
-            signature,
-            result: transactionCreationData?.[idx]?.result,
-          }))
+        const results: SentTransactionsResult<TransactionResult> = Array.from(
+          resendAbortControllerBySignature,
+        ).map(([signature], idx) => ({
+          signature,
+          result: transactionCreationData?.[idx]?.result,
+        }))
         signAndSendTxnsResults.push(...results)
 
         eventHandlers?.chunkSent?.(results)
@@ -131,7 +142,10 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
         //? Track the confirmation of transactions in chunks only if specific handlers exist
         if (eventHandlers.confirmedAll || eventHandlers.chunkConfirmed) {
           confirmTransactions({
-            signatures: signaturesAndAbortControllers.map(({ signature }) => signature),
+            signatures: Array.from(resendAbortControllerBySignature).map(
+              ([signature]) => signature,
+            ),
+            resendAbortControllerBySignature,
             blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
             connection: walletAndConnection.connection,
             options,
@@ -175,7 +189,6 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
               }
             })
             .finally(() => {
-              //TODO Abort after confirm/reject on each txn immediately
               //? Abort each resend
               resendAbortControllerBySignature.forEach((abortController) => {
                 if (!abortController?.signal.aborted) {

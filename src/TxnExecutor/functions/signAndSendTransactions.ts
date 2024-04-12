@@ -5,17 +5,15 @@ import { VersionedTransaction } from '@solana/web3.js'
 export type SignAndSendTransactions = (params: {
   transactions: VersionedTransaction[]
   walletAndConnection: WalletAndConnection
+  minContextSlot: number
   options: ExecutorOptions
-  slot: number
-  resendInterval?: number
 }) => Promise<{ signature: string; resendAbortController?: AbortController }[]>
 
 export const signAndSendTransactions: SignAndSendTransactions = async ({
   transactions,
   walletAndConnection,
+  minContextSlot,
   options,
-  slot,
-  resendInterval,
 }) => {
   const { connection, wallet } = walletAndConnection
 
@@ -27,9 +25,8 @@ export const signAndSendTransactions: SignAndSendTransactions = async ({
       const [signatureAndResendAbortController] = await sendTransactions({
         transactions: [signedTransaction],
         connection: connection,
+        minContextSlot,
         options,
-        slot,
-        resendInterval,
       })
 
       signaturesAndAbortControllers.push(signatureAndResendAbortController)
@@ -42,9 +39,8 @@ export const signAndSendTransactions: SignAndSendTransactions = async ({
   const signatureAndResendAbortController = await sendTransactions({
     transactions: signedTxns,
     connection: connection,
+    minContextSlot,
     options,
-    slot,
-    resendInterval,
   })
 
   return signatureAndResendAbortController

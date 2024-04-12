@@ -1,5 +1,5 @@
 import { wait } from '../utils'
-import { ConfirmTransactionError } from './types'
+import { ConfirmTransactionError } from './errors'
 import { BlockhashWithExpiryBlockHeight, Commitment, Connection } from '@solana/web3.js'
 
 /**
@@ -10,7 +10,9 @@ type ConfirmTransactionByPollingSignatureStatus = (params: {
   signature: string
   connection: Connection
   commitment?: Commitment
-  /* abortSignal is required because it is the only way to stop the loop if there were no errors  */
+  /**
+   * Required because it is the only way to stop the loop if there were no errors
+   */
   abortSignal: AbortSignal
   /**
    * Polling interval in seconds

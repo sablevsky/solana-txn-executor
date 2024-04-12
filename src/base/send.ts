@@ -6,73 +6,81 @@ import {
   VersionedTransaction,
 } from '@solana/web3.js'
 
+/**
+ * Used to resend transactions repeatedly at a specified interval
+ * Throws SendTransactionError if something goes wrong
+ */
 type ResendTransactionWithInterval = (params: {
   transaction: VersionedTransaction
   connection: Connection
-  signal: AbortSignal
+  /**
+   * Required because it is the only way to stop the loop if there were no errors
+   */
+  abortSignal: AbortSignal
+  /**
+   * Resend interval in seconds
+   */
+  resendInterval: number
   sendOptions?: SendOptions
-  resendInterval?: number
 }) => Promise<void>
 export const resendTransactionWithInterval: ResendTransactionWithInterval = async ({
   transaction,
+  resendInterval,
   connection,
-  signal,
+  abortSignal,
   sendOptions,
-  resendInterval = 2,
 }) => {
-  // eslint-disable-next-line no-console, no-undef
-  console.log('start resendTransactionWithInterval')
-  while (!signal.aborted) {
-    // eslint-disable-next-line no-console, no-undef
-    console.log('resendTransactionWithInterval iteration')
+  while (!abortSignal.aborted) {
     await wait(resendInterval * 1000)
     try {
       await connection.sendTransaction(transaction, sendOptions)
     } catch (error) {
-      if (error instanceof SendTransactionError) {
-        throw error
-      }
       throw new SendTransactionError('ResendTransactionError')
     }
   }
 }
 
+/**
+ * Send transaction with resend functionality
+ * Throws SendTransactionError if something goes wrong
+ */
 type SendTransactionWithResendInterval = (params: {
   transaction: VersionedTransaction
   connection: Connection
   sendOptions?: SendOptions
-  resendInterval?: number
-}) => Promise<{ signature: string; resendAbortController: AbortController | undefined }>
+  /**
+   * Resend params
+   * If undefined send transaction only once
+   */
+  resendOptions?: {
+    /**
+     * Required because it is the only way to stop the resend loop
+     */
+    abortSignal: AbortSignal
+    /**
+     * Resend transactions interval in seconds
+     */
+    interval: number
+  }
+}) => Promise<string>
 export const sendTransactionWithResendInterval: SendTransactionWithResendInterval = async ({
   transaction,
   connection,
   sendOptions,
-  resendInterval,
+  resendOptions,
 }) => {
-  // eslint-disable-next-line no-console, no-undef
-  console.log('send transaction')
   const signature = await connection.sendTransaction(transaction, sendOptions)
 
-  const resendAbortController = new AbortController()
-
-  if (resendInterval) {
-    setTimeout(() => {
-      if (!resendAbortController.signal.aborted) {
-        //? Abort in 60 seconds
-        resendAbortController.abort()
-        //TODO: Add timeout error here
-        throw new Error('Timeout')
-      }
-    }, 60 * 1000)
-
+  //? Prevent using resendTransactionWithInterval if resendOptions is undefined
+  if (resendOptions) {
     resendTransactionWithInterval({
       transaction,
       connection,
-      signal: resendAbortController.signal,
+      abortSignal: resendOptions.abortSignal,
       sendOptions,
-      resendInterval,
+      resendInterval: resendOptions.interval,
     })
   }
 
-  return { signature, resendAbortController: resendInterval ? resendAbortController : undefined }
+  return signature
 }
