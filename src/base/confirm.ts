@@ -2,11 +2,7 @@ import { wait } from '../utils'
 import { ConfirmTransactionError } from './errors'
 import { BlockhashWithExpiryBlockHeight, Commitment, Connection } from '@solana/web3.js'
 
-/**
- * Can be used as fallback when websocket died (in connection.confirmTransaction) or RPC doen't support websockets at all
- * Throws ConfirmTransactionError if something goes wrong
- */
-type ConfirmTransactionByPollingSignatureStatus = (params: {
+type ConfirmTransactionByPollingSignatureStatusParams = {
   signature: string
   connection: Connection
   commitment?: Commitment
@@ -18,41 +14,50 @@ type ConfirmTransactionByPollingSignatureStatus = (params: {
    * Polling interval in seconds
    */
   refetchInterval: number
-}) => Promise<string | undefined>
-export const confirmTransactionByPollingSignatureStatus: ConfirmTransactionByPollingSignatureStatus =
-  async ({ signature, connection, abortSignal, commitment = 'confirmed', refetchInterval = 2 }) => {
-    try {
-      while (!abortSignal.aborted) {
-        await wait(refetchInterval * 1000)
-        const { value: signatureValue } = await connection.getSignatureStatus(signature, {
-          searchTransactionHistory: false,
-        })
-        if (signatureValue?.confirmationStatus === commitment) {
-          return signature
-        }
-      }
-    } catch (error) {
-      throw new ConfirmTransactionError('ConfirmTransactionError')
-    }
-  }
-
+}
 /**
- * Throws ConfirmTransactionError|TransactionExpiredBlockheightExceededError|TransactionExpiredTimeoutError if something goes wrong
+ * Can be used as fallback when websocket died (in connection.confirmTransaction) or RPC doen't support websockets at all
+ * Throws ConfirmTransactionError if something goes wrong
  */
-type СonfirmTransactionBlockheightBased = (params: {
+export async function confirmTransactionByPollingSignatureStatus({
+  signature,
+  connection,
+  abortSignal,
+  commitment = 'confirmed',
+  refetchInterval = 2,
+}: ConfirmTransactionByPollingSignatureStatusParams): Promise<string | undefined> {
+  try {
+    while (!abortSignal.aborted) {
+      await wait(refetchInterval * 1000)
+      const { value: signatureValue } = await connection.getSignatureStatus(signature, {
+        searchTransactionHistory: false,
+      })
+      if (signatureValue?.confirmationStatus === commitment) {
+        return signature
+      }
+    }
+  } catch (error) {
+    throw new ConfirmTransactionError('ConfirmTransactionError')
+  }
+}
+
+type СonfirmTransactionBlockheightBasedParams = {
   signature: string
   connection: Connection
   blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
   abortSignal?: AbortSignal
   commitment?: Commitment
-}) => Promise<string>
-export const confirmTransactionBlockheightBased: СonfirmTransactionBlockheightBased = async ({
+}
+/**
+ * Throws ConfirmTransactionError|TransactionExpiredBlockheightExceededError|TransactionExpiredTimeoutError if something goes wrong
+ */
+export async function confirmTransactionBlockheightBased({
   signature,
   connection,
   blockhashWithExpiryBlockHeight,
   abortSignal,
   commitment,
-}) => {
+}: СonfirmTransactionBlockheightBasedParams): Promise<string> {
   const { value } = await connection.confirmTransaction(
     {
       signature,
@@ -73,22 +78,22 @@ export const confirmTransactionBlockheightBased: СonfirmTransactionBlockheightB
   return signature
 }
 
-type ConfirmTransactionWithPollingFallback = (params: {
+type ConfirmTransactionWithPollingFallbackParams = {
   signature: string
   connection: Connection
   blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
   abortSignal: AbortSignal
   commitment?: Commitment
   pollingSignatureInterval?: number
-}) => Promise<string>
-export const confirmTransactionWithPollingFallback: ConfirmTransactionWithPollingFallback = async ({
+}
+export async function confirmTransactionWithPollingFallback({
   signature,
   connection,
   blockhashWithExpiryBlockHeight,
   abortSignal,
   commitment,
   pollingSignatureInterval,
-}) => {
+}: ConfirmTransactionWithPollingFallbackParams): Promise<string> {
   const confirmTransactionBlockheightBasedPromise = confirmTransactionBlockheightBased({
     signature,
     abortSignal,
