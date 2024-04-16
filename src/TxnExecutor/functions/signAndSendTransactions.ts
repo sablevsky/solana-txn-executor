@@ -17,22 +17,15 @@ export const signAndSendTransactions: SignAndSendTransactions = async ({
 }) => {
   const { connection, wallet } = walletAndConnection
 
-  if (!wallet.signAllTransactions || options.signAllChunkSize === 1) {
-    const signaturesAndAbortControllers = []
-
-    for (let i = 0; i < transactions.length; ++i) {
-      const signedTransaction = await wallet.signTransaction(transactions[i])
-      const [signatureAndResendAbortController] = await sendTransactions({
-        transactions: [signedTransaction],
-        connection: connection,
-        minContextSlot,
-        options,
-      })
-
-      signaturesAndAbortControllers.push(signatureAndResendAbortController)
-    }
-
-    return signaturesAndAbortControllers
+  //? Use signTransaction method if signAllTransactions not supported or chunk size is 1
+  if (!wallet.signAllTransactions || transactions.length === 1) {
+    const signedTransaction = await wallet.signTransaction(transactions[0])
+    return await sendTransactions({
+      transactions: [signedTransaction],
+      connection: connection,
+      minContextSlot,
+      options,
+    })
   }
 
   const signedTxns = await wallet.signAllTransactions(transactions)
