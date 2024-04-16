@@ -1,4 +1,3 @@
-import { TransactionCreationData } from './functions/createTransaction'
 import { Blockhash, Commitment, Connection, PublicKey, VersionedTransaction } from '@solana/web3.js'
 
 /**
@@ -26,16 +25,6 @@ export type BlockhashWithExpiryBlockHeight = Readonly<{
   lastValidBlockHeight: number
 }>
 
-/**
- * Function that creates TxnData. Acc
- * Accepts the parameters required to create a TxnData.
- * Wallet and Connection are always passed
- */
-export type CreateTransactionDataFn<CreateTransactionFnParams, TransactionResult> = (
-  params: CreateTransactionFnParams,
-  walletAndConnection: WalletAndConnection,
-) => Promise<TransactionCreationData<TransactionResult>>
-
 export type ExecutorOptionsBase = {
   /**
    * Options for sending transactions
@@ -60,6 +49,16 @@ export type ExecutorOptionsBase = {
 
     pollingSignatureInterval?: number
   }
+
+  /**
+   * async function that returns priority fee (microlamports)
+   * If was not passed, the priority fee will be 0
+   * Priority fee value is the concern of the class user. It is up to you to determine how it should be calculated
+   */
+  transactionOptions: {
+    getPriorityFee?: () => Promise<number>
+  }
+
   /**
    * Amount of transactions passed to the signAllTransactions function
    * Default value: 10
@@ -67,7 +66,7 @@ export type ExecutorOptionsBase = {
    * Max amount of transactions processed in signAllTransactions is limited by wallet provider implementation
    * Use 1 for ledger of SquadsX
    */
-  signAllChunkSize: number
+  chunkSize: number
   /**
    * Stop sending other txns(chunks) after first preflight error. Mostly relevant for small values of signAllChunkSize (E.g. ledger cases)
    * Default value: false
@@ -88,28 +87,24 @@ export type ExecutorOptionsBase = {
 
 export type ExecutorOptions = Partial<ExecutorOptionsBase>
 
-type SentTransactionResult<TransactionResult> = {
+type SentTransactionResult<TxnResult> = {
   signature: string
-  result?: TransactionResult
+  result?: TxnResult
 }
 
-export type SentTransactionsResult<TransactionResult> = Array<
-  SentTransactionResult<TransactionResult>
->
+export type SentTransactionsResult<TxnResult> = Array<SentTransactionResult<TxnResult>>
 
-export type ConfirmationFailedResult<TransactionResult> = {
+export type ConfirmationFailedResult<TxnResult> = {
   signature: string
   reason: ConfirmTransactionErrorReason
-  result?: TransactionResult
+  result?: TxnResult
 }
 
-export type ConfirmationFailedResults<TransactionResult> = Array<
-  ConfirmationFailedResult<TransactionResult>
->
+export type ConfirmationFailedResults<TxnResult> = Array<ConfirmationFailedResult<TxnResult>>
 
-export type ConfirmedTransactionsResult<TransactionResult> = {
-  confirmed: SentTransactionsResult<TransactionResult>
-  failed: ConfirmationFailedResults<TransactionResult>
+export type ConfirmedTransactionsResult<TxnResult> = {
+  confirmed: SentTransactionsResult<TxnResult>
+  failed: ConfirmationFailedResults<TxnResult>
 }
 
 export enum ConfirmTransactionErrorReason {
@@ -121,7 +116,7 @@ export enum ConfirmTransactionErrorReason {
 /**
  * Supported event handlers
  */
-export type EventHanlders<TransactionResult> = Partial<{
+export type EventHanlders<TxnResult> = Partial<{
   /**
    * Triggers before every chunk approve
    */
@@ -129,30 +124,32 @@ export type EventHanlders<TransactionResult> = Partial<{
   /**
    * Triggers every time after each chunk is successfully sent (no errors on preflight)
    */
-  chunkSent: (txnsResults: SentTransactionsResult<TransactionResult>) => void
+  chunkSent: (txnsResults: SentTransactionsResult<TxnResult>) => void
   /**
    * Triggers on every preflight error
    */
   error: (txnError: TxnError) => void
   /**
    * Triggers if all chunks were successfully sent (no errors on preflight)
+   * Triggers when all chunks were sent
    */
-  sentAll: (txnsResults: SentTransactionsResult<TransactionResult>) => void
+  sentAll: (txnsResults: SentTransactionsResult<TxnResult>) => void
   /**
    * Triggers if at least one chunk was successfully sent (no errors on preflight)
+   * Triggers when all chunks were sent
    */
-  sentSome: (txnsResults: SentTransactionsResult<TransactionResult>) => void
+  sentSome: (txnsResults: SentTransactionsResult<TxnResult>) => void
   /**
    * Triggers on the result of each chunk confirmation.
    * Contains both confirmed and failed results.
    * Triggers when the result of all transactions confirmations in the chunk is known,
    * regardless of the success of the confirmation
    */
-  chunkConfirmed: ({ confirmed, failed }: ConfirmedTransactionsResult<TransactionResult>) => void
+  chunkConfirmed: ({ confirmed, failed }: ConfirmedTransactionsResult<TxnResult>) => void
   /**
    * Triggers on the result of all chunks confirmation.
    * Contains both confirmed and failed results.
    * Will never execute if there is an error in the sending/preflight step
    */
-  confirmedAll: ({ confirmed, failed }: ConfirmedTransactionsResult<TransactionResult>) => void
+  confirmedAll: ({ confirmed, failed }: ConfirmedTransactionsResult<TxnResult>) => void
 }>
