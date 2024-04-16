@@ -10,7 +10,7 @@ import {
  * Used to resend transactions repeatedly at a specified interval
  * Throws SendTransactionError if something goes wrong
  */
-type ResendTransactionWithInterval = (params: {
+type ResendTransactionWithIntervalParams = {
   transaction: VersionedTransaction
   connection: Connection
   /**
@@ -22,14 +22,14 @@ type ResendTransactionWithInterval = (params: {
    */
   resendInterval: number
   sendOptions?: SendOptions
-}) => Promise<void>
-export const resendTransactionWithInterval: ResendTransactionWithInterval = async ({
+}
+export async function resendTransactionWithInterval({
   transaction,
   resendInterval,
   connection,
   abortSignal,
   sendOptions,
-}) => {
+}: ResendTransactionWithIntervalParams): Promise<void> {
   while (!abortSignal.aborted) {
     await wait(resendInterval * 1000)
     try {
@@ -44,7 +44,7 @@ export const resendTransactionWithInterval: ResendTransactionWithInterval = asyn
  * Send transaction with resend functionality
  * Throws SendTransactionError if something goes wrong
  */
-type SendTransactionWithResendInterval = (params: {
+type SendTransactionWithResendIntervalParams = {
   transaction: VersionedTransaction
   connection: Connection
   sendOptions?: SendOptions
@@ -62,13 +62,13 @@ type SendTransactionWithResendInterval = (params: {
      */
     interval: number
   }
-}) => Promise<string>
-export const sendTransactionWithResendInterval: SendTransactionWithResendInterval = async ({
+}
+export async function sendTransactionWithResendInterval({
   transaction,
   connection,
   sendOptions,
   resendOptions,
-}) => {
+}: SendTransactionWithResendIntervalParams): Promise<string> {
   const signature = await connection.sendTransaction(transaction, sendOptions)
 
   //? Prevent using resendTransactionWithInterval if resendOptions is undefined
