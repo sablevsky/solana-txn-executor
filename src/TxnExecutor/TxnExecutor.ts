@@ -1,8 +1,8 @@
-import { DEFAULT_CONFIRMATION_TIMEOUT } from './constants'
-import { confirmTransactions, createTransaction, signAndSendTransactions } from './functions'
+import { CreateTxnData } from '../base'
+import { DEFAULT_CONFIRMATION_TIMEOUT, GET_PRIORITY_FEE_PLACEHOLDER } from './constants'
+import { confirmTransactions, makeTransaction, signAndSendTransactions } from './functions'
 import {
   ConfirmedTransactionsResult,
-  CreateTransactionDataFn,
   EventHanlders,
   ExecutorOptions,
   ExecutorOptionsBase,
@@ -19,6 +19,9 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptionsBase = {
     confirmationTimeout: DEFAULT_CONFIRMATION_TIMEOUT,
     pollingSignatureInterval: undefined,
   },
+  transactionOptions: {
+    getPriorityFee: undefined,
+  },
   sendOptions: {
     skipPreflight: undefined,
     maxRetries: undefined,
@@ -26,45 +29,36 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptionsBase = {
     resendInterval: undefined,
     resendTimeout: undefined,
   },
-  signAllChunkSize: 10,
+  chunkSize: 10,
   abortOnFirstError: false,
   debug: {
     preventSending: undefined,
   },
 }
 
-export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
-  private createTransactionDataFn: CreateTransactionDataFn<
-    CreateTransactionFnParams,
-    TransactionResult
-  >
-  private txnsParams: ReadonlyArray<CreateTransactionFnParams> = []
+export class TxnExecutor<TxnResult> {
+  private txnsParams: ReadonlyArray<CreateTxnData<TxnResult>> = []
   private options: ExecutorOptionsBase = DEFAULT_EXECUTOR_OPTIONS
   private walletAndConnection: WalletAndConnection
-  private eventHandlers: EventHanlders<TransactionResult> = {}
-  constructor(
-    createTransactionDataFn: CreateTransactionDataFn<CreateTransactionFnParams, TransactionResult>,
-    walletAndConnection: WalletAndConnection,
-    options?: ExecutorOptions,
-  ) {
-    this.createTransactionDataFn = createTransactionDataFn
+  private eventHandlers: EventHanlders<TxnResult> = {}
+  constructor(walletAndConnection: WalletAndConnection, options?: ExecutorOptions) {
     this.walletAndConnection = walletAndConnection
     this.options = merge(this.options, options)
   }
 
-  public addTransactionParam(param: CreateTransactionFnParams) {
+  public addTransactionParam(param: Readonly<CreateTxnData<TxnResult>>) {
     this.txnsParams = [...this.txnsParams, param]
     return this
   }
 
-  public addTransactionParams(params: CreateTransactionFnParams[]) {
+  public addTransactionParams(params: ReadonlyArray<CreateTxnData<TxnResult>>) {
     this.txnsParams = [...this.txnsParams, ...params]
     return this
   }
 
-  public on<K extends keyof EventHanlders<TransactionResult>>(
+  public on<K extends keyof EventHanlders<TxnResult>>(
     type: K,
-    handler: EventHanlders<TransactionResult>[K],
+    handler: EventHanlders<TxnResult>[K],
   ) {
     this.eventHandlers = {
       ...this.eventHandlers,
@@ -73,152 +67,154 @@ export class TxnExecutor<CreateTransactionFnParams, TransactionResult> {
     return this
   }
 
-  private signAndSendTxnsResults: SentTransactionsResult<TransactionResult> = []
-  private confirmedTxnsResults: ConfirmedTransactionsResult<TransactionResult> = {
+  private signAndSendTxnsResults: SentTransactionsResult<TxnResult> = []
+  private confirmedTxnsResults: ConfirmedTransactionsResult<TxnResult> = {
     confirmed: [],
     failed: [],
   }
-  public async execute() {
-    const {
-      txnsParams,
-      createTransactionDataFn,
-      walletAndConnection,
-      options,
-      eventHandlers,
-      signAndSendTxnsResults,
-      confirmedTxnsResults,
-    } = this
 
-    const txnsDataChunks = chunk(txnsParams, options.signAllChunkSize)
+  public async execute() {
+    if (!this.txnsParams.length) {
+      throw new Error('No transaction params provided')
+    }
+
+    const signAllSupported = !!this.walletAndConnection.wallet?.signAllTransactions
+    const chunkSize = !signAllSupported || this.options.chunkSize === 1 ? 1 : this.options.chunkSize
+    const txnsDataChunks = chunk(this.txnsParams, chunkSize)
 
     for (const chunk of txnsDataChunks) {
-      const resendAbortControllerBySignature = new Map<string, AbortController | undefined>()
+      await this.executeChunk(chunk)
+    }
 
-      try {
-        const transactionCreationData = await Promise.all(
-          chunk.map((params) => createTransactionDataFn(params, { ...walletAndConnection })),
-        )
+    if (this.signAndSendTxnsResults.length === txnsDataChunks.flat().length) {
+      this.eventHandlers?.sentAll?.(this.signAndSendTxnsResults)
+    }
+    if (this.signAndSendTxnsResults.length) {
+      this.eventHandlers?.sentSome?.(this.signAndSendTxnsResults)
+    }
 
-        const { value, context } =
-          await walletAndConnection.connection.getLatestBlockhashAndContext(
-            options.sendOptions.preflightCommitment,
-          )
-        const { blockhash, lastValidBlockHeight } = value
+    return this.signAndSendTxnsResults
+  }
 
-        const transactions = await Promise.all(
-          transactionCreationData.map((txnData) =>
-            createTransaction({
-              transactionCreationData: txnData,
-              blockhash: blockhash,
-              connection: walletAndConnection.connection,
-              payerKey: walletAndConnection.wallet.publicKey,
-            }),
-          ),
-        )
+  private async executeChunk(txnsParams: ReadonlyArray<CreateTxnData<TxnResult>>) {
+    const resendAbortControllerBySignature = new Map<string, AbortController | undefined>()
 
-        eventHandlers?.beforeChunkApprove?.()
+    try {
+      const {
+        value: { blockhash, lastValidBlockHeight },
+        context: { slot: minContextSlot },
+      } = await this.walletAndConnection.connection.getLatestBlockhashAndContext(
+        this.options.sendOptions.preflightCommitment,
+      )
 
-        const signAndSendTransactionsResults = await signAndSendTransactions({
-          transactions,
-          walletAndConnection,
-          options,
-          minContextSlot: context.slot,
-        })
+      const priorityFee = await (
+        this.options.transactionOptions?.getPriorityFee ?? GET_PRIORITY_FEE_PLACEHOLDER
+      )()
 
-        //? setAbortControllerMap
-        signAndSendTransactionsResults.forEach(({ signature, resendAbortController }) =>
-          resendAbortControllerBySignature.set(signature, resendAbortController),
-        )
+      const transactions = await Promise.all(
+        txnsParams.map((txnParams) =>
+          makeTransaction({
+            createTxnData: txnParams,
+            blockhash: blockhash,
+            connection: this.walletAndConnection.connection,
+            payerKey: this.walletAndConnection.wallet.publicKey,
+            priorityFee,
+          }),
+        ),
+      )
 
-        const results: SentTransactionsResult<TransactionResult> = Array.from(
+      this.eventHandlers?.beforeChunkApprove?.()
+
+      const signAndSendTransactionsResults = await signAndSendTransactions({
+        transactions,
+        walletAndConnection: this.walletAndConnection,
+        options: this.options,
+        minContextSlot,
+      })
+
+      //? setting abortController map
+      signAndSendTransactionsResults.forEach(({ signature, resendAbortController }) =>
+        resendAbortControllerBySignature.set(signature, resendAbortController),
+      )
+
+      const results: SentTransactionsResult<TxnResult> = Array.from(
+        resendAbortControllerBySignature,
+      ).map(([signature], idx) => ({
+        signature,
+        result: txnsParams?.[idx]?.result,
+      }))
+      this.signAndSendTxnsResults.push(...results)
+
+      this.eventHandlers?.chunkSent?.(results)
+
+      //? Track the confirmation of transactions in chunks only if specific handlers exist
+      if (this.eventHandlers.confirmedAll || this.eventHandlers.chunkConfirmed) {
+        confirmTransactions({
+          signatures: Array.from(resendAbortControllerBySignature).map(([signature]) => signature),
           resendAbortControllerBySignature,
-        ).map(([signature], idx) => ({
-          signature,
-          result: transactionCreationData?.[idx]?.result,
-        }))
-        signAndSendTxnsResults.push(...results)
+          blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
+          connection: this.walletAndConnection.connection,
+          options: this.options,
+        })
+          .then(({ confirmed: confirmedSignatures, failed: confirmationFailedResults }) => {
+            const confirmedResults = results.filter(({ signature }) =>
+              confirmedSignatures.includes(signature),
+            )
+            this.confirmedTxnsResults.confirmed.push(...confirmedResults)
 
-        eventHandlers?.chunkSent?.(results)
+            const failedResults = chain(confirmationFailedResults)
+              .map(({ reason, signature }) => {
+                const result = results.find(
+                  ({ signature: resSignature }) => signature === resSignature,
+                )
+                if (!result) return null
+                return {
+                  reason,
+                  signature: result.signature,
+                  result: result.result,
+                }
+              })
+              .compact()
+              .value()
 
-        //? Track the confirmation of transactions in chunks only if specific handlers exist
-        if (eventHandlers.confirmedAll || eventHandlers.chunkConfirmed) {
-          confirmTransactions({
-            signatures: Array.from(resendAbortControllerBySignature).map(
-              ([signature]) => signature,
-            ),
-            resendAbortControllerBySignature,
-            blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
-            connection: walletAndConnection.connection,
-            options,
-          })
-            .then(({ confirmed: confirmedSignatures, failed: confirmationFailedResults }) => {
-              const confirmedResults = results.filter(({ signature }) =>
-                confirmedSignatures.includes(signature),
-              )
-              confirmedTxnsResults.confirmed.push(...confirmedResults)
+            this.confirmedTxnsResults.failed.push(...failedResults)
 
-              const failedResults = chain(confirmationFailedResults)
-                .map(({ reason, signature }) => {
-                  const result = results.find(
-                    ({ signature: resSignature }) => signature === resSignature,
-                  )
-                  if (!result) return null
-                  return {
-                    reason,
-                    signature: result.signature,
-                    result: result.result,
-                  }
-                })
-                .compact()
-                .value()
+            this.eventHandlers?.chunkConfirmed?.({
+              confirmed: confirmedResults,
+              failed: confirmationFailedResults,
+            })
 
-              confirmedTxnsResults.failed.push(...failedResults)
-
-              eventHandlers?.chunkConfirmed?.({
+            if (
+              this.confirmedTxnsResults.confirmed.length +
+                this.confirmedTxnsResults.failed.length ===
+              this.txnsParams.length
+            ) {
+              this.eventHandlers?.confirmedAll?.({
                 confirmed: confirmedResults,
                 failed: confirmationFailedResults,
               })
-
-              if (
-                confirmedTxnsResults.confirmed.length + confirmedTxnsResults.failed.length ===
-                txnsParams.length
-              ) {
-                eventHandlers?.confirmedAll?.({
-                  confirmed: confirmedResults,
-                  failed: confirmationFailedResults,
-                })
+            }
+          })
+          .finally(() => {
+            //? Abort each resend
+            resendAbortControllerBySignature.forEach((abortController) => {
+              if (!abortController?.signal.aborted) {
+                abortController?.abort()
               }
             })
-            .finally(() => {
-              //? Abort each resend
-              resendAbortControllerBySignature.forEach((abortController) => {
-                if (!abortController?.signal.aborted) {
-                  abortController?.abort()
-                }
-              })
-            })
-        }
-      } catch (error) {
-        eventHandlers?.error?.(error as TxnError)
-        const userRejectedTxn = didUserRejectTxnSigning(error as TxnError)
-        //? If chunk error -- abort each resend
-        resendAbortControllerBySignature.forEach((abortController) => {
-          if (!abortController?.signal.aborted) {
-            abortController?.abort()
-          }
-        })
-        if (userRejectedTxn) break
-        if (!userRejectedTxn && options.abortOnFirstError) break
+          })
       }
+    } catch (error) {
+      this.eventHandlers?.error?.(error as TxnError)
+      const userRejectedTxn = didUserRejectTxnSigning(error as TxnError)
+      //? If chunk error -- abort each resend
+      resendAbortControllerBySignature.forEach((abortController) => {
+        if (!abortController?.signal.aborted) {
+          abortController?.abort()
+        }
+      })
+      if (userRejectedTxn) return
+      if (!userRejectedTxn && this.options.abortOnFirstError) return
     }
-
-    if (signAndSendTxnsResults.length === txnsDataChunks.flat().length) {
-      eventHandlers?.sentAll?.(signAndSendTxnsResults)
-    }
-    if (signAndSendTxnsResults.length) {
-      eventHandlers?.sentSome?.(signAndSendTxnsResults)
-    }
-
-    return signAndSendTxnsResults
   }
 }
