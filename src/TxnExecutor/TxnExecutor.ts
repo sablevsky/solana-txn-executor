@@ -107,10 +107,6 @@ export class TxnExecutor<TxnResult> {
         this.options.sendOptions.preflightCommitment,
       )
 
-      const priorityFee = await (
-        this.options.transactionOptions?.getPriorityFee ?? GET_PRIORITY_FEE_PLACEHOLDER
-      )()
-
       const transactions = await Promise.all(
         txnsParams.map((txnParams) =>
           makeTransaction({
@@ -118,7 +114,8 @@ export class TxnExecutor<TxnResult> {
             blockhash: blockhash,
             connection: this.walletAndConnection.connection,
             payerKey: this.walletAndConnection.wallet.publicKey,
-            priorityFee,
+            getPriorityFee:
+              this.options.transactionOptions?.getPriorityFee ?? GET_PRIORITY_FEE_PLACEHOLDER,
           }),
         ),
       )

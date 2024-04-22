@@ -1,3 +1,4 @@
+import { CreateTxnData } from '../base'
 import { Blockhash, Commitment, Connection, PublicKey, VersionedTransaction } from '@solana/web3.js'
 
 /**
@@ -25,6 +26,8 @@ export type BlockhashWithExpiryBlockHeight = Readonly<{
   lastValidBlockHeight: number
 }>
 
+export type GetPriorityFee = <TxnResult>(txnParams: CreateTxnData<TxnResult>) => Promise<number>
+
 export type ExecutorOptionsBase = {
   /**
    * Options for sending transactions
@@ -40,7 +43,6 @@ export type ExecutorOptionsBase = {
     resendTimeout?: number
     resendInterval?: number
   }
-
   confirmOptions: {
     /** desired commitment level */
     commitment?: Commitment
@@ -49,16 +51,15 @@ export type ExecutorOptionsBase = {
 
     pollingSignatureInterval?: number
   }
-
   /**
    * async function that returns priority fee (microlamports)
    * If was not passed, the priority fee will be 0
    * Priority fee value is the concern of the class user. It is up to you to determine how it should be calculated
+   * The function is called on EACH transaction creation. So, caching (if needed) needs to be implemented on your own
    */
   transactionOptions: {
-    getPriorityFee?: () => Promise<number>
+    getPriorityFee?: GetPriorityFee
   }
-
   /**
    * Amount of transactions passed to the signAllTransactions function
    * Default value: 10

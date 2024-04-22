@@ -4,18 +4,11 @@ import {
   getComputeUnitLimitInstruction,
   getComputeUnitPriceInstruction,
 } from '../../base'
+import { GetPriorityFee } from '../types'
 import { VersionedTransaction } from '@solana/web3.js'
 
-/**
- * Data needed to create a transaction
- * Consists of instructions, signers (optional),
- * lookup tables (optional)
- * and \result (additional data to be returned with the
- * transaction result. F.e. for an optimistic response) (optional)
- */
-
 type MakeTransactionParams<TxnResult> = CreateTransactionParams<TxnResult> & {
-  priorityFee: number
+  getPriorityFee: GetPriorityFee
 }
 
 export async function makeTransaction<TxnResult>({
@@ -23,7 +16,7 @@ export async function makeTransaction<TxnResult>({
   blockhash,
   payerKey,
   connection,
-  priorityFee,
+  getPriorityFee,
 }: MakeTransactionParams<TxnResult>): Promise<VersionedTransaction> {
   const { instructions, signers, lookupTables, result } = createTxnData
 
@@ -33,6 +26,8 @@ export async function makeTransaction<TxnResult>({
     payerKey,
     lookupTables,
   })
+
+  const priorityFee = await getPriorityFee(createTxnData)
 
   const computeUnitPriceIxn = getComputeUnitPriceInstruction(priorityFee)
 
