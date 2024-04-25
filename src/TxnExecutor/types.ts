@@ -26,7 +26,11 @@ export type BlockhashWithExpiryBlockHeight = Readonly<{
   lastValidBlockHeight: number
 }>
 
-export type GetPriorityFee = <TxnResult>(txnParams: CreateTxnData<TxnResult>) => Promise<number>
+export type GetPriorityFeeParams<TxnResult> = {
+  txnParams: CreateTxnData<TxnResult>
+  connection: Connection
+}
+export type GetPriorityFee = <TxnResult>(params: GetPriorityFeeParams<TxnResult>) => Promise<number>
 
 export type ExecutorOptionsBase = {
   /**

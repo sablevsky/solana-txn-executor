@@ -27,7 +27,7 @@ export async function makeTransaction<TxnResult>({
     lookupTables,
   })
 
-  const priorityFee = await getPriorityFee(createTxnData)
+  const priorityFee = await getPriorityFee({ txnParams: createTxnData, connection })
 
   const computeUnitPriceIxn = getComputeUnitPriceInstruction(priorityFee)
 
