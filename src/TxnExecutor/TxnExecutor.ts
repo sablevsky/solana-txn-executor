@@ -46,12 +46,12 @@ export class TxnExecutor<TxnResult> {
     this.options = merge(this.options, options)
   }
 
-  public addTransactionParam(param: Readonly<CreateTxnData<TxnResult>>) {
+  public addTxnData(param: Readonly<CreateTxnData<TxnResult>>) {
     this.txnsParams = [...this.txnsParams, param]
     return this
   }
 
-  public addTransactionParams(params: ReadonlyArray<CreateTxnData<TxnResult>>) {
+  public addTxnsData(params: ReadonlyArray<CreateTxnData<TxnResult>>) {
     this.txnsParams = [...this.txnsParams, ...params]
     return this
   }
