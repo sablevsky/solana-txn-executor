@@ -111,7 +111,7 @@ export class TxnExecutor<TxnResult> {
         txnsParams.map((txnParams) =>
           makeTransaction({
             createTxnData: txnParams,
-            blockhash: blockhash,
+            blockhash,
             connection: this.walletAndConnection.connection,
             payerKey: this.walletAndConnection.wallet.publicKey,
             getPriorityFee:
@@ -127,6 +127,8 @@ export class TxnExecutor<TxnResult> {
         walletAndConnection: this.walletAndConnection,
         options: this.options,
         minContextSlot,
+        blockhash,
+        lastValidBlockHeight,
       })
 
       //? setting abortController map
