@@ -6,8 +6,6 @@ export type SignAndSendTransactions = (params: {
   transactions: VersionedTransaction[]
   walletAndConnection: WalletAndConnection
   minContextSlot: number
-  blockhash: string
-  lastValidBlockHeight: number
   options: ExecutorOptionsBase
 }) => Promise<{ signature: string; resendAbortController?: AbortController }[]>
 
@@ -15,8 +13,6 @@ export const signAndSendTransactions: SignAndSendTransactions = async ({
   transactions,
   walletAndConnection,
   minContextSlot,
-  blockhash,
-  lastValidBlockHeight,
   options,
 }) => {
   const { connection, wallet } = walletAndConnection
@@ -28,8 +24,6 @@ export const signAndSendTransactions: SignAndSendTransactions = async ({
       transactions: [signedTransaction],
       connection: connection,
       minContextSlot,
-      blockhash,
-      lastValidBlockHeight,
       options,
     })
   }
@@ -39,8 +33,6 @@ export const signAndSendTransactions: SignAndSendTransactions = async ({
     transactions: signedTxns,
     connection: connection,
     minContextSlot,
-    blockhash,
-    lastValidBlockHeight,
     options,
   })
 
