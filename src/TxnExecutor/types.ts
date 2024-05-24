@@ -1,4 +1,4 @@
-import { CreateTxnData } from '../base'
+import { CreateTxnData, SimulatedAccountInfoByPubkey } from '../base'
 import { Blockhash, Commitment, Connection, PublicKey, VersionedTransaction } from '@solana/web3.js'
 
 /**
@@ -26,11 +26,11 @@ export type BlockhashWithExpiryBlockHeight = Readonly<{
   lastValidBlockHeight: number
 }>
 
-export type GetPriorityFeeParams<TxnResult> = {
-  txnParams: CreateTxnData<TxnResult>
+export type GetPriorityFeeParams = {
+  txnParams: CreateTxnData
   connection: Connection
 }
-export type GetPriorityFee = <TxnResult>(params: GetPriorityFeeParams<TxnResult>) => Promise<number>
+export type GetPriorityFee = (params: GetPriorityFeeParams) => Promise<number>
 
 export type ExecutorOptionsBase = {
   /**
@@ -92,24 +92,22 @@ export type ExecutorOptionsBase = {
 
 export type ExecutorOptions = Partial<ExecutorOptionsBase>
 
-type SentTransactionResult<TxnResult> = {
+type SentTransactionResult = {
   signature: string
-  result?: TxnResult
+  accountInfoByPubkey?: SimulatedAccountInfoByPubkey
 }
 
-export type SentTransactionsResult<TxnResult> = Array<SentTransactionResult<TxnResult>>
+export type SentTransactionsResult = Array<SentTransactionResult>
 
-export type ConfirmationFailedResult<TxnResult> = {
-  signature: string
+export type ConfirmationFailedResult = SentTransactionResult & {
   reason: ConfirmTransactionErrorReason
-  result?: TxnResult
 }
 
-export type ConfirmationFailedResults<TxnResult> = Array<ConfirmationFailedResult<TxnResult>>
+export type ConfirmationFailedResults = Array<ConfirmationFailedResult>
 
-export type ConfirmedTransactionsResult<TxnResult> = {
-  confirmed: SentTransactionsResult<TxnResult>
-  failed: ConfirmationFailedResults<TxnResult>
+export type ConfirmedTransactionsResult = {
+  confirmed: SentTransactionsResult
+  failed: ConfirmationFailedResults
 }
 
 export enum ConfirmTransactionErrorReason {
@@ -121,7 +119,7 @@ export enum ConfirmTransactionErrorReason {
 /**
  * Supported event handlers
  */
-export type EventHanlders<TxnResult> = Partial<{
+export type EventHanlders = Partial<{
   /**
    * Triggers before every chunk approve
    */
@@ -129,7 +127,7 @@ export type EventHanlders<TxnResult> = Partial<{
   /**
    * Triggers every time after each chunk is successfully sent (no errors on preflight)
    */
-  chunkSent: (txnsResults: SentTransactionsResult<TxnResult>) => void
+  chunkSent: (txnsResults: SentTransactionsResult) => void
   /**
    * Triggers on every preflight error
    */
@@ -138,23 +136,23 @@ export type EventHanlders<TxnResult> = Partial<{
    * Triggers if all chunks were successfully sent (no errors on preflight)
    * Triggers when all chunks were sent
    */
-  sentAll: (txnsResults: SentTransactionsResult<TxnResult>) => void
+  sentAll: (txnsResults: SentTransactionsResult) => void
   /**
    * Triggers if at least one chunk was successfully sent (no errors on preflight)
    * Triggers when all chunks were sent
    */
-  sentSome: (txnsResults: SentTransactionsResult<TxnResult>) => void
+  sentSome: (txnsResults: SentTransactionsResult) => void
   /**
    * Triggers on the result of each chunk confirmation.
    * Contains both confirmed and failed results.
    * Triggers when the result of all transactions confirmations in the chunk is known,
    * regardless of the success of the confirmation
    */
-  chunkConfirmed: ({ confirmed, failed }: ConfirmedTransactionsResult<TxnResult>) => void
+  chunkConfirmed: ({ confirmed, failed }: ConfirmedTransactionsResult) => void
   /**
    * Triggers on the result of all chunks confirmation.
    * Contains both confirmed and failed results.
    * Will never execute if there is an error in the sending/preflight step
    */
-  confirmedAll: ({ confirmed, failed }: ConfirmedTransactionsResult<TxnResult>) => void
+  confirmedAll: ({ confirmed, failed }: ConfirmedTransactionsResult) => void
 }>

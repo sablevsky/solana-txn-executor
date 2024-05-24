@@ -2,6 +2,7 @@ import { CreateTxnData } from '../base'
 import { DEFAULT_CONFIRMATION_TIMEOUT, GET_PRIORITY_FEE_PLACEHOLDER } from './constants'
 import { confirmTransactions, makeTransaction, signAndSendTransactions } from './functions'
 import {
+  ConfirmationFailedResult,
   ConfirmedTransactionsResult,
   EventHanlders,
   ExecutorOptions,
@@ -11,7 +12,7 @@ import {
   WalletAndConnection,
 } from './types'
 import { didUserRejectTxnSigning } from './utils'
-import { chain, chunk, merge } from 'lodash'
+import { chain, chunk, map, merge } from 'lodash'
 
 export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptionsBase = {
   confirmOptions: {
@@ -36,30 +37,27 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptionsBase = {
   },
 }
 
-export class TxnExecutor<TxnResult> {
-  private txnsParams: ReadonlyArray<CreateTxnData<TxnResult>> = []
+export class TxnExecutor {
+  private txnsParams: ReadonlyArray<CreateTxnData> = []
   private options: ExecutorOptionsBase = DEFAULT_EXECUTOR_OPTIONS
   private walletAndConnection: WalletAndConnection
-  private eventHandlers: EventHanlders<TxnResult> = {}
+  private eventHandlers: EventHanlders = {}
   constructor(walletAndConnection: WalletAndConnection, options?: ExecutorOptions) {
     this.walletAndConnection = walletAndConnection
     this.options = merge(this.options, options)
   }
 
-  public addTxnData(param: Readonly<CreateTxnData<TxnResult>>) {
+  public addTxnData(param: Readonly<CreateTxnData>) {
     this.txnsParams = [...this.txnsParams, param]
     return this
   }
 
-  public addTxnsData(params: ReadonlyArray<CreateTxnData<TxnResult>>) {
+  public addTxnsData(params: ReadonlyArray<CreateTxnData>) {
     this.txnsParams = [...this.txnsParams, ...params]
     return this
   }
 
-  public on<K extends keyof EventHanlders<TxnResult>>(
-    type: K,
-    handler: EventHanlders<TxnResult>[K],
-  ) {
+  public on<K extends keyof EventHanlders>(type: K, handler: EventHanlders[K]) {
     this.eventHandlers = {
       ...this.eventHandlers,
       [type]: handler,
@@ -67,8 +65,8 @@ export class TxnExecutor<TxnResult> {
     return this
   }
 
-  private signAndSendTxnsResults: SentTransactionsResult<TxnResult> = []
-  private confirmedTxnsResults: ConfirmedTransactionsResult<TxnResult> = {
+  private signAndSendTxnsResults: SentTransactionsResult = []
+  private confirmedTxnsResults: ConfirmedTransactionsResult = {
     confirmed: [],
     failed: [],
   }
@@ -96,7 +94,7 @@ export class TxnExecutor<TxnResult> {
     return this.signAndSendTxnsResults
   }
 
-  private async executeChunk(txnsParams: ReadonlyArray<CreateTxnData<TxnResult>>) {
+  private async executeChunk(txnsParams: ReadonlyArray<CreateTxnData>) {
     const resendAbortControllerBySignature = new Map<string, AbortController | undefined>()
 
     try {
@@ -107,7 +105,7 @@ export class TxnExecutor<TxnResult> {
         this.options.sendOptions.preflightCommitment,
       )
 
-      const transactions = await Promise.all(
+      const transactionsAndAccounts = await Promise.all(
         txnsParams.map((txnParams) =>
           makeTransaction({
             createTxnData: txnParams,
@@ -123,7 +121,7 @@ export class TxnExecutor<TxnResult> {
       this.eventHandlers?.beforeChunkApprove?.()
 
       const signAndSendTransactionsResults = await signAndSendTransactions({
-        transactions,
+        transactions: map(transactionsAndAccounts, ({ transaction }) => transaction),
         walletAndConnection: this.walletAndConnection,
         options: this.options,
         minContextSlot,
@@ -134,12 +132,12 @@ export class TxnExecutor<TxnResult> {
         resendAbortControllerBySignature.set(signature, resendAbortController),
       )
 
-      const results: SentTransactionsResult<TxnResult> = Array.from(
-        resendAbortControllerBySignature,
-      ).map(([signature], idx) => ({
-        signature,
-        result: txnsParams?.[idx]?.result,
-      }))
+      const results: SentTransactionsResult = Array.from(resendAbortControllerBySignature).map(
+        ([signature], idx) => ({
+          signature,
+          accountInfoByPubkey: transactionsAndAccounts?.[idx]?.accountInfoByPubkey,
+        }),
+      )
       this.signAndSendTxnsResults.push(...results)
 
       this.eventHandlers?.chunkSent?.(results)
@@ -165,11 +163,12 @@ export class TxnExecutor<TxnResult> {
                   ({ signature: resSignature }) => signature === resSignature,
                 )
                 if (!result) return null
-                return {
+                const value: ConfirmationFailedResult = {
                   reason,
                   signature: result.signature,
-                  result: result.result,
+                  accountInfoByPubkey: result.accountInfoByPubkey,
                 }
+                return value
               })
               .compact()
               .value()
