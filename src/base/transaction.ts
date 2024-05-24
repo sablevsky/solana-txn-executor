@@ -5,6 +5,7 @@ import {
   Connection,
   PublicKey,
   Signer,
+  SimulatedTransactionAccountInfo,
   TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
@@ -18,25 +19,25 @@ import { chain, concat, flatMap, map } from 'lodash'
  * and result (additional data to be returned with the
  * transaction result. F.e. for an optimistic response) (optional)
  */
-export type CreateTxnData<TxnResult> = {
+export type CreateTxnData = {
   instructions: TransactionInstruction[]
   signers?: Signer[]
-  result?: TxnResult
+  accounts?: PublicKey[]
   lookupTables?: PublicKey[]
 }
 
-export type CreateTransactionParams<TxnResult> = {
-  createTxnData: CreateTxnData<TxnResult>
+export type CreateTransactionParams = {
+  createTxnData: CreateTxnData
   blockhash: string
   payerKey: PublicKey
   connection: Connection
 }
-export async function createTransaction<TxnResult>({
+export async function createTransaction({
   createTxnData,
   blockhash,
   payerKey,
   connection,
-}: CreateTransactionParams<TxnResult>): Promise<VersionedTransaction> {
+}: CreateTransactionParams): Promise<VersionedTransaction> {
   const { instructions, signers, lookupTables } = createTxnData
 
   const lookupTableAccountsResponses = await Promise.all(
@@ -63,23 +64,24 @@ export async function createTransaction<TxnResult>({
   return transaction
 }
 
-type GetComputeUnitLimitInstructionParams = {
+type SimulateTransactionParams = CreateTxnData & {
   connection: Connection
-  instructions: TransactionInstruction[]
   payerKey: PublicKey
-  lookupTables?: PublicKey[]
-  fallbackComputeUnitsAmount?: number
 }
-export async function getComputeUnitLimitInstruction({
+export type SimulatedAccountInfoByPubkey = Record<string, SimulatedTransactionAccountInfo | null>
+type SimulateTransactionResult = {
+  accountInfoByPubkey?: SimulatedAccountInfoByPubkey
+  unitsConsumed: number
+}
+export async function simulateTransaction({
   connection,
   instructions,
   lookupTables,
   payerKey,
-  fallbackComputeUnitsAmount = 400_000,
-}: GetComputeUnitLimitInstructionParams): Promise<TransactionInstruction> {
+  accounts,
+}: SimulateTransactionParams): Promise<SimulateTransactionResult> {
   const SIMULATION_CU_LIMIT = 1_400_000
-  //? Increase CU by 10% to have a small extra
-  const CU_AMOUNT_INCREASE = 1.1
+  const FALLBACK_COMPUTE_UNITS_AMOUNT = 400_000
 
   const simulationInstructions = [
     ComputeBudgetProgram.setComputeUnitLimit({ units: SIMULATION_CU_LIMIT }),
@@ -106,20 +108,38 @@ export async function getComputeUnitLimitInstruction({
   const { value: simulationValue } = await connection.simulateTransaction(transaction, {
     replaceRecentBlockhash: true,
     sigVerify: false,
+    accounts: accounts
+      ? { addresses: accounts?.map((acc) => acc.toBase58()), encoding: 'base64' }
+      : undefined,
   })
 
   if (simulationValue.err) {
     throw new TransactionError('Transaction simualation failed', simulationValue.logs)
   }
 
-  const units = simulationValue.unitsConsumed ?? fallbackComputeUnitsAmount
+  const accountInfoByPubkey: SimulatedAccountInfoByPubkey | undefined =
+    accounts &&
+    chain(accounts)
+      .map((account, idx) => [account, simulationValue.accounts?.[idx] ?? null])
+      .fromPairs()
+      .value()
+
+  return {
+    accountInfoByPubkey,
+    unitsConsumed: simulationValue.unitsConsumed ?? FALLBACK_COMPUTE_UNITS_AMOUNT,
+  }
+}
+
+export function getComputeUnitLimitInstruction(unitsConsumed: number): TransactionInstruction {
+  //? Increase CU by 10% to have a small extra
+  const CU_AMOUNT_INCREASE = 1.1
 
   return ComputeBudgetProgram.setComputeUnitLimit({
-    units: Math.round(units * CU_AMOUNT_INCREASE),
+    units: Math.round(unitsConsumed * CU_AMOUNT_INCREASE),
   })
 }
 
-export function getComputeUnitPriceInstruction(priorityFee: number) {
+export function getComputeUnitPriceInstruction(priorityFee: number): TransactionInstruction {
   return ComputeBudgetProgram.setComputeUnitPrice({
     microLamports: priorityFee,
   })
