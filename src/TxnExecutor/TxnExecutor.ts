@@ -37,27 +37,27 @@ export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptionsBase = {
   },
 }
 
-export class TxnExecutor {
-  private txnsParams: ReadonlyArray<CreateTxnData> = []
+export class TxnExecutor<Params> {
+  private txnsParams: ReadonlyArray<CreateTxnData<Params>> = []
   private options: ExecutorOptionsBase = DEFAULT_EXECUTOR_OPTIONS
   private walletAndConnection: WalletAndConnection
-  private eventHandlers: EventHanlders = {}
+  private eventHandlers: EventHanlders<Params> = {}
   constructor(walletAndConnection: WalletAndConnection, options?: ExecutorOptions) {
     this.walletAndConnection = walletAndConnection
     this.options = merge(this.options, options)
   }
 
-  public addTxnData(param: Readonly<CreateTxnData>) {
+  public addTxnData(param: Readonly<CreateTxnData<Params>>) {
     this.txnsParams = [...this.txnsParams, param]
     return this
   }
 
-  public addTxnsData(params: ReadonlyArray<CreateTxnData>) {
+  public addTxnsData(params: ReadonlyArray<CreateTxnData<Params>>) {
     this.txnsParams = [...this.txnsParams, ...params]
     return this
   }
 
-  public on<K extends keyof EventHanlders>(type: K, handler: EventHanlders[K]) {
+  public on<K extends keyof EventHanlders<Params>>(type: K, handler: EventHanlders<Params>[K]) {
     this.eventHandlers = {
       ...this.eventHandlers,
       [type]: handler,
@@ -65,8 +65,8 @@ export class TxnExecutor {
     return this
   }
 
-  private signAndSendTxnsResults: SentTransactionsResult = []
-  private confirmedTxnsResults: ConfirmedTransactionsResult = {
+  private signAndSendTxnsResults: SentTransactionsResult<Params> = []
+  private confirmedTxnsResults: ConfirmedTransactionsResult<Params> = {
     confirmed: [],
     failed: [],
   }
@@ -94,7 +94,7 @@ export class TxnExecutor {
     return this.signAndSendTxnsResults
   }
 
-  private async executeChunk(txnsParams: ReadonlyArray<CreateTxnData>) {
+  private async executeChunk(txnsParams: ReadonlyArray<CreateTxnData<Params>>) {
     const resendAbortControllerBySignature = new Map<string, AbortController | undefined>()
 
     try {
@@ -132,12 +132,13 @@ export class TxnExecutor {
         resendAbortControllerBySignature.set(signature, resendAbortController),
       )
 
-      const results: SentTransactionsResult = Array.from(resendAbortControllerBySignature).map(
-        ([signature], idx) => ({
-          signature,
-          accountInfoByPubkey: transactionsAndAccounts?.[idx]?.accountInfoByPubkey,
-        }),
-      )
+      const results: SentTransactionsResult<Params> = Array.from(
+        resendAbortControllerBySignature,
+      ).map(([signature], idx) => ({
+        signature,
+        accountInfoByPubkey: transactionsAndAccounts?.[idx]?.accountInfoByPubkey,
+        params: transactionsAndAccounts?.[idx]?.params,
+      }))
       this.signAndSendTxnsResults.push(...results)
 
       this.eventHandlers?.chunkSent?.(results)
@@ -163,10 +164,11 @@ export class TxnExecutor {
                   ({ signature: resSignature }) => signature === resSignature,
                 )
                 if (!result) return null
-                const value: ConfirmationFailedResult = {
+                const value: ConfirmationFailedResult<Params> = {
                   reason,
                   signature: result.signature,
                   accountInfoByPubkey: result.accountInfoByPubkey,
+                  params: result.params,
                 }
                 return value
               })
@@ -177,7 +179,7 @@ export class TxnExecutor {
 
             this.eventHandlers?.chunkConfirmed?.({
               confirmed: confirmedResults,
-              failed: confirmationFailedResults,
+              failed: failedResults,
             })
 
             if (
@@ -187,7 +189,7 @@ export class TxnExecutor {
             ) {
               this.eventHandlers?.confirmedAll?.({
                 confirmed: confirmedResults,
-                failed: confirmationFailedResults,
+                failed: failedResults,
               })
             }
           })

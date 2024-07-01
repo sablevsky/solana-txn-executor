@@ -27,7 +27,7 @@ export type BlockhashWithExpiryBlockHeight = Readonly<{
 }>
 
 export type GetPriorityFeeParams = {
-  txnParams: CreateTxnData
+  txnParams: Omit<CreateTxnData<unknown>, 'params'>
   connection: Connection
 }
 export type GetPriorityFee = (params: GetPriorityFeeParams) => Promise<number>
@@ -92,22 +92,23 @@ export type ExecutorOptionsBase = {
 
 export type ExecutorOptions = Partial<ExecutorOptionsBase>
 
-type SentTransactionResult = {
+type SentTransactionResult<Params> = {
   signature: string
   accountInfoByPubkey?: SimulatedAccountInfoByPubkey
+  params: Params
 }
 
-export type SentTransactionsResult = Array<SentTransactionResult>
+export type SentTransactionsResult<Params> = Array<SentTransactionResult<Params>>
 
-export type ConfirmationFailedResult = SentTransactionResult & {
+export type ConfirmationFailedResult<Params> = SentTransactionResult<Params> & {
   reason: ConfirmTransactionErrorReason
 }
 
-export type ConfirmationFailedResults = Array<ConfirmationFailedResult>
+export type ConfirmationFailedResults<Params> = Array<ConfirmationFailedResult<Params>>
 
-export type ConfirmedTransactionsResult = {
-  confirmed: SentTransactionsResult
-  failed: ConfirmationFailedResults
+export type ConfirmedTransactionsResult<Params> = {
+  confirmed: SentTransactionsResult<Params>
+  failed: ConfirmationFailedResults<Params>
 }
 
 export enum ConfirmTransactionErrorReason {
@@ -119,7 +120,7 @@ export enum ConfirmTransactionErrorReason {
 /**
  * Supported event handlers
  */
-export type EventHanlders = Partial<{
+export type EventHanlders<Params> = Partial<{
   /**
    * Triggers before every chunk approve
    */
@@ -127,7 +128,7 @@ export type EventHanlders = Partial<{
   /**
    * Triggers every time after each chunk is successfully sent (no errors on preflight)
    */
-  chunkSent: (txnsResults: SentTransactionsResult) => void
+  chunkSent: (txnsResults: SentTransactionsResult<Params>) => void
   /**
    * Triggers on every preflight error
    */
@@ -136,23 +137,23 @@ export type EventHanlders = Partial<{
    * Triggers if all chunks were successfully sent (no errors on preflight)
    * Triggers when all chunks were sent
    */
-  sentAll: (txnsResults: SentTransactionsResult) => void
+  sentAll: (txnsResults: SentTransactionsResult<Params>) => void
   /**
    * Triggers if at least one chunk was successfully sent (no errors on preflight)
    * Triggers when all chunks were sent
    */
-  sentSome: (txnsResults: SentTransactionsResult) => void
+  sentSome: (txnsResults: SentTransactionsResult<Params>) => void
   /**
    * Triggers on the result of each chunk confirmation.
    * Contains both confirmed and failed results.
    * Triggers when the result of all transactions confirmations in the chunk is known,
    * regardless of the success of the confirmation
    */
-  chunkConfirmed: ({ confirmed, failed }: ConfirmedTransactionsResult) => void
+  chunkConfirmed: ({ confirmed, failed }: ConfirmedTransactionsResult<Params>) => void
   /**
    * Triggers on the result of all chunks confirmation.
    * Contains both confirmed and failed results.
    * Will never execute if there is an error in the sending/preflight step
    */
-  confirmedAll: ({ confirmed, failed }: ConfirmedTransactionsResult) => void
+  confirmedAll: ({ confirmed, failed }: ConfirmedTransactionsResult<Params>) => void
 }>

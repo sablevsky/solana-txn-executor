@@ -9,23 +9,24 @@ import {
 import { GetPriorityFee } from '../types'
 import { VersionedTransaction } from '@solana/web3.js'
 
-type MakeTransactionParams = CreateTransactionParams & {
+type MakeTransactionParams<Params> = CreateTransactionParams<Params> & {
   getPriorityFee: GetPriorityFee
 }
 
-type MakeTransactionResult = {
+type MakeTransactionResult<Params> = {
   transaction: VersionedTransaction
   accountInfoByPubkey?: SimulatedAccountInfoByPubkey
+  params: Params
 }
 
-export async function makeTransaction({
+export async function makeTransaction<Params>({
   createTxnData,
   blockhash,
   payerKey,
   connection,
   getPriorityFee,
-}: MakeTransactionParams): Promise<MakeTransactionResult> {
-  const { instructions, signers, lookupTables, accounts } = createTxnData
+}: MakeTransactionParams<Params>): Promise<MakeTransactionResult<Params>> {
+  const { instructions, signers, lookupTables, accounts, params } = createTxnData
 
   const simulationResult = await simulateTransaction({
     connection,
@@ -33,6 +34,7 @@ export async function makeTransaction({
     lookupTables,
     payerKey,
     accounts,
+    params,
   })
 
   const computeUnitLimitIxn = getComputeUnitLimitInstruction(simulationResult.unitsConsumed)
@@ -47,11 +49,12 @@ export async function makeTransaction({
       lookupTables,
       signers,
       accounts,
+      params,
     },
     blockhash,
     payerKey,
     connection,
   })
 
-  return { transaction, accountInfoByPubkey: simulationResult.accountInfoByPubkey }
+  return { transaction, accountInfoByPubkey: simulationResult.accountInfoByPubkey, params }
 }

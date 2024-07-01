@@ -14,30 +14,30 @@ import { chain, concat, flatMap, map } from 'lodash'
 
 /**
  * Data needed to create a transaction
- * Consists of instructions, signers (optional),
+ * Consists of params (that used to create TxnData),
+ * instructions, signers (optional),
  * lookup tables (optional)
- * and result (additional data to be returned with the
- * transaction result. F.e. for an optimistic response) (optional)
  */
-export type CreateTxnData = {
+export type CreateTxnData<Params> = {
+  params: Params
   instructions: TransactionInstruction[]
   signers?: Signer[]
   accounts?: PublicKey[]
   lookupTables?: PublicKey[]
 }
 
-export type CreateTransactionParams = {
-  createTxnData: CreateTxnData
+export type CreateTransactionParams<Params> = {
+  createTxnData: CreateTxnData<Params>
   blockhash: string
   payerKey: PublicKey
   connection: Connection
 }
-export async function createTransaction({
+export async function createTransaction<Params>({
   createTxnData,
   blockhash,
   payerKey,
   connection,
-}: CreateTransactionParams): Promise<VersionedTransaction> {
+}: CreateTransactionParams<Params>): Promise<VersionedTransaction> {
   const { instructions, signers, lookupTables } = createTxnData
 
   const lookupTableAccountsResponses = await Promise.all(
@@ -64,7 +64,7 @@ export async function createTransaction({
   return transaction
 }
 
-type SimulateTransactionParams = CreateTxnData & {
+type SimulateTransactionParams = CreateTxnData<unknown> & {
   connection: Connection
   payerKey: PublicKey
 }
