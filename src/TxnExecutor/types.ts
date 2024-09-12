@@ -1,5 +1,5 @@
 import { CreateTxnData, SimulatedAccountInfoByPubkey } from '../base'
-import { Blockhash, Commitment, Connection, PublicKey, VersionedTransaction } from '@solana/web3.js'
+import { Commitment, Connection, PublicKey, VersionedTransaction } from '@solana/web3.js'
 
 /**
  * The wallet must contain a publicKey and support at least signTransaction method
@@ -20,11 +20,6 @@ export type WalletAndConnection = {
 export type TxnError = {
   logs?: Array<string>
 } & Error
-
-export type BlockhashWithExpiryBlockHeight = Readonly<{
-  blockhash: Blockhash
-  lastValidBlockHeight: number
-}>
 
 export type GetPriorityFeeParams = {
   txnParams: Omit<CreateTxnData<unknown>, 'params'>
@@ -48,12 +43,10 @@ export type ExecutorOptionsBase = {
     resendInterval?: number
   }
   confirmOptions: {
-    /** desired commitment level */
-    commitment?: Commitment
     /** Transaction confirmation tracking forced termination timeout */
     confirmationTimeout?: number
 
-    pollingSignatureInterval?: number
+    pollingSignatureInterval: number
   }
   /**
    * async function that returns priority fee (microlamports)
