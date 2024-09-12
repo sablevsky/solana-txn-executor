@@ -1,17 +1,12 @@
-import { confirmTransactionWithPollingFallback } from '../../base'
+import { confirmTransactionByPollingSignatureStatus } from '../../base'
 import { wait } from '../../utils'
-import {
-  BlockhashWithExpiryBlockHeight,
-  ConfirmTransactionErrorReason,
-  ExecutorOptionsBase,
-} from '../types'
+import { ConfirmTransactionErrorReason, ExecutorOptionsBase } from '../types'
 import { Connection } from '@solana/web3.js'
 
 export type ConfirmTransactionsProps = {
   signatures: string[]
   resendAbortControllerBySignature: Map<string, AbortController | undefined>
   connection: Connection
-  blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
   options: ExecutorOptionsBase
 }
 
@@ -24,7 +19,6 @@ export const confirmTransactions = async ({
   signatures,
   resendAbortControllerBySignature,
   connection,
-  blockhashWithExpiryBlockHeight,
   options,
 }: ConfirmTransactionsProps) => {
   const results = await Promise.allSettled(
@@ -34,7 +28,6 @@ export const confirmTransactions = async ({
         await confirmSingleTransaction({
           signature,
           connection,
-          blockhashWithExpiryBlockHeight,
           options,
           abortConfirmationController,
         })
@@ -76,18 +69,16 @@ export const confirmTransactions = async ({
 type ConfirmTransactionProps = {
   signature: string
   connection: Connection
-  blockhashWithExpiryBlockHeight: BlockhashWithExpiryBlockHeight
   options: ExecutorOptionsBase
   abortConfirmationController: AbortController
 }
 const confirmSingleTransaction = async ({
   signature,
   connection,
-  blockhashWithExpiryBlockHeight,
   options,
   abortConfirmationController,
 }: ConfirmTransactionProps) => {
-  const { confirmationTimeout, commitment, pollingSignatureInterval } = options.confirmOptions
+  const { confirmationTimeout, pollingSignatureInterval } = options.confirmOptions
 
   //? Use promise because setTimeout are executed in the main loop, outside the body of code that originated them.
   //? It is impossible to handle an error using setTimeout
@@ -99,13 +90,11 @@ const confirmSingleTransaction = async ({
     }
   }
 
-  const confirmTransactionPromise = confirmTransactionWithPollingFallback({
+  const confirmTransactionPromise = confirmTransactionByPollingSignatureStatus({
     signature,
     connection,
-    pollingSignatureInterval,
     abortSignal: abortConfirmationController.signal,
-    commitment,
-    blockhashWithExpiryBlockHeight,
+    refetchInterval: pollingSignatureInterval ?? 2,
   })
 
   await (confirmationTimeout

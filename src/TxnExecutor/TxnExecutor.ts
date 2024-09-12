@@ -1,5 +1,5 @@
 import { CreateTxnData } from '../base'
-import { DEFAULT_CONFIRMATION_TIMEOUT, GET_PRIORITY_FEE_PLACEHOLDER } from './constants'
+import { GET_PRIORITY_FEE_PLACEHOLDER } from './constants'
 import { confirmTransactions, makeTransaction, signAndSendTransactions } from './functions'
 import {
   ConfirmationFailedResult,
@@ -16,9 +16,8 @@ import { chain, chunk, map, merge } from 'lodash'
 
 export const DEFAULT_EXECUTOR_OPTIONS: ExecutorOptionsBase = {
   confirmOptions: {
-    commitment: undefined,
-    confirmationTimeout: DEFAULT_CONFIRMATION_TIMEOUT,
-    pollingSignatureInterval: undefined,
+    confirmationTimeout: 60,
+    pollingSignatureInterval: 2,
   },
   transactionOptions: {
     getPriorityFee: undefined,
@@ -99,7 +98,7 @@ export class TxnExecutor<Params> {
 
     try {
       const {
-        value: { blockhash, lastValidBlockHeight },
+        value: { blockhash },
         context: { slot: minContextSlot },
       } = await this.walletAndConnection.connection.getLatestBlockhashAndContext(
         this.options.sendOptions.preflightCommitment,
@@ -148,7 +147,6 @@ export class TxnExecutor<Params> {
         confirmTransactions({
           signatures: Array.from(resendAbortControllerBySignature).map(([signature]) => signature),
           resendAbortControllerBySignature,
-          blockhashWithExpiryBlockHeight: { blockhash, lastValidBlockHeight },
           connection: this.walletAndConnection.connection,
           options: this.options,
         })
