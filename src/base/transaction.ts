@@ -85,6 +85,7 @@ export async function simulateTransaction({
 
   const simulationInstructions = [
     ComputeBudgetProgram.setComputeUnitLimit({ units: SIMULATION_CU_LIMIT }),
+    getComputeUnitPriceInstruction(1), //? to match ixns amount with the real txn
     ...instructions,
   ]
 
